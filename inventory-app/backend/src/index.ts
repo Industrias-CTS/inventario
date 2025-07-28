@@ -1,0 +1,62 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import dotenv from 'dotenv';
+
+import authRoutes from '@/routes/auth.routes';
+import componentsRoutes from '@/routes/components.routes';
+import movementsRoutes from '@/routes/movements.routes';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middlewares de seguridad
+app.use(helmet());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+}));
+app.use(compression());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+  message: 'Demasiadas solicitudes desde esta IP',
+});
+app.use('/api/', limiter);
+
+// Body parser
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Rutas
+app.use('/api/auth', authRoutes);
+app.use('/api/components', componentsRoutes);
+app.use('/api/movements', movementsRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date() });
+});
+
+// Error handler
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err.stack);
+  res.status(err.status || 500).json({
+    error: err.message || 'Error interno del servidor',
+  });
+});
+
+// 404 handler
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Ruta no encontrada' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
+});
