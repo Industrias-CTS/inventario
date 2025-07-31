@@ -124,6 +124,11 @@ async function seedInitialData() {
   // Generar UUIDs simples
   const generateId = () => Math.random().toString(36).substr(2, 9);
 
+  // Hash para contraseñas (admin: admin123, user: user123)
+  const bcrypt = require('bcryptjs');
+  const adminPassword = await bcrypt.hash('admin123', 10);
+  const userPassword = await bcrypt.hash('user123', 10);
+
   // Insertar datos iniciales
   const unitId = generateId();
   const categoryId = generateId();
@@ -136,6 +141,11 @@ async function seedInitialData() {
   };
 
   await db.exec(`
+    -- Usuarios por defecto
+    INSERT INTO users (id, username, email, password, first_name, last_name, role) VALUES 
+    ('${generateId()}', 'admin', 'admin@inventory.com', '${adminPassword}', 'Administrador', 'Sistema', 'admin'),
+    ('${generateId()}', 'user', 'user@inventory.com', '${userPassword}', 'Usuario', 'Estándar', 'user');
+
     -- Unidades
     INSERT INTO units (id, name, symbol) VALUES 
     ('${unitId}', 'Unidades', 'pcs'),

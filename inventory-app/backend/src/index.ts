@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import authRoutes from '@/routes/auth.routes';
 import componentsRoutes from '@/routes/components.routes';
 import movementsRoutes from '@/routes/movements.routes';
+import recipesRoutes from '@/routes/recipes.routes';
 
 dotenv.config();
 
@@ -38,9 +39,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/components', componentsRoutes);
 app.use('/api/movements', movementsRoutes);
+app.use('/api/recipes', recipesRoutes);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
 });
 

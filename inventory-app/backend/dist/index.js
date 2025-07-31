@@ -12,6 +12,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const auth_routes_1 = __importDefault(require("@/routes/auth.routes"));
 const components_routes_1 = __importDefault(require("@/routes/components.routes"));
 const movements_routes_1 = __importDefault(require("@/routes/movements.routes"));
+const recipes_routes_1 = __importDefault(require("@/routes/recipes.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3001;
@@ -36,19 +37,20 @@ app.use(express_1.default.urlencoded({ extended: true }));
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/components', components_routes_1.default);
 app.use('/api/movements', movements_routes_1.default);
+app.use('/api/recipes', recipes_routes_1.default);
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date() });
 });
 // Error handler
-app.use((err, req, res, next) => {
+app.use((err, _req, res, _next) => {
     console.error(err.stack);
     res.status(err.status || 500).json({
         error: err.message || 'Error interno del servidor',
     });
 });
 // 404 handler
-app.use((req, res) => {
+app.use((_req, res) => {
     res.status(404).json({ error: 'Ruta no encontrada' });
 });
 app.listen(PORT, () => {

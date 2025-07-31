@@ -15,6 +15,16 @@ import {
   MenuItem,
   Chip,
   Alert,
+  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Autocomplete,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -23,6 +33,9 @@ import {
   ArrowUpward,
   ArrowDownward,
   BookmarkAdd,
+  Receipt,
+  Delete,
+  AddCircle,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
@@ -58,7 +71,16 @@ export default function Movements() {
   const [tabValue, setTabValue] = useState(0);
   const [openMovementDialog, setOpenMovementDialog] = useState(false);
   const [openReservationDialog, setOpenReservationDialog] = useState(false);
-  // const [selectedComponent, setSelectedComponent] = useState<string>('');
+  const [openInvoiceDialog, setOpenInvoiceDialog] = useState(false);
+  const [invoiceItems, setInvoiceItems] = useState<Array<{
+    component_code: string;
+    component_name: string;
+    quantity: number;
+    total_cost: number;
+    unit: string;
+  }>>([]);
+  const [isNewComponent, setIsNewComponent] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: movementsData, isLoading: movementsLoading } = useQuery({
@@ -101,6 +123,19 @@ export default function Movements() {
     },
   });
 
+  const createInvoiceMutation = useMutation({
+    mutationFn: movementsService.createInvoice,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['movements'] });
+      queryClient.invalidateQueries({ queryKey: ['components'] });
+      setOpenInvoiceDialog(false);
+      resetInvoice();
+      setInvoiceItems([]);
+      setSelectedComponent(null);
+      setIsNewComponent(false);
+    },
+  });
+
   const {
     register: registerMovement,
     handleSubmit: handleSubmitMovement,
@@ -116,6 +151,21 @@ export default function Movements() {
     reset: resetReservation,
     control: controlReservation,
     formState: { errors: reservationErrors },
+  } = useForm();
+
+  const {
+    register: registerInvoice,
+    handleSubmit: handleSubmitInvoice,
+    reset: resetInvoice,
+    watch: watchInvoice,
+    formState: { errors: invoiceErrors },
+  } = useForm();
+
+  const {
+    register: registerItem,
+    handleSubmit: handleSubmitItem,
+    reset: resetItem,
+    formState: { errors: itemErrors },
   } = useForm();
 
   // Watch form values para validación en tiempo real
@@ -223,6 +273,43 @@ export default function Movements() {
     createReservationMutation.mutate(data);
   };
 
+  const onSubmitInvoice = (data: any) => {
+    if (invoiceItems.length === 0) {
+      alert('Debe agregar al menos un item a la factura');
+      return;
+    }
+    createInvoiceMutation.mutate({
+      ...data,
+      shipping_cost: parseFloat(data.shipping_cost || 0),
+      shipping_tax: parseFloat(data.shipping_tax || 0),
+      items: invoiceItems,
+    });
+  };
+
+  const onAddItem = (data: any) => {
+    // Validar que se haya seleccionado un componente o se esté creando uno nuevo
+    if (!isNewComponent && !selectedComponent) {
+      alert('Debe seleccionar un componente existente o cambiar a "Crear componente nuevo"');
+      return;
+    }
+    
+    const itemData = {
+      component_code: isNewComponent ? data.component_code : selectedComponent?.code || data.component_code,
+      component_name: isNewComponent ? data.component_name : selectedComponent?.name || data.component_name,
+      quantity: parseFloat(data.quantity),
+      total_cost: parseFloat(data.total_cost),
+      unit: isNewComponent ? (data.unit || 'unit') : (selectedComponent?.unit_symbol || 'unit'),
+    };
+    
+    setInvoiceItems([...invoiceItems, itemData]);
+    resetItem();
+    setSelectedComponent(null);
+  };
+
+  const removeItem = (index: number) => {
+    setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
+  };
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -234,6 +321,13 @@ export default function Movements() {
             onClick={() => setOpenMovementDialog(true)}
           >
             Nuevo Movimiento
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Receipt />}
+            onClick={() => setOpenInvoiceDialog(true)}
+          >
+            Nueva Factura
           </Button>
           <Button
             variant="outlined"
@@ -531,6 +625,306 @@ export default function Movements() {
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Dialog para nueva factura */}
+      <Dialog
+        open={openInvoiceDialog}
+        onClose={() => {
+          setOpenInvoiceDialog(false);
+          setInvoiceItems([]);
+          resetInvoice();
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Nueva Factura</DialogTitle>
+        <DialogContent>
+          <form onSubmit={handleSubmitInvoice(onSubmitInvoice)}>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Tipo de Movimiento"
+                  select
+                  {...registerInvoice('movement_type_id', {
+                    required: 'El tipo de movimiento es requerido',
+                  })}
+                  error={!!invoiceErrors.movement_type_id}
+                  helperText={invoiceErrors.movement_type_id?.message as string}
+                >
+                  <MenuItem value="">Seleccionar...</MenuItem>
+                  {movementTypesData?.movementTypes
+                    .filter(type => type.operation === 'IN')
+                    .map((type) => (
+                      <MenuItem key={type.id} value={type.id}>
+                        {type.name}
+                      </MenuItem>
+                    ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Número de Factura"
+                  {...registerInvoice('reference_number', {
+                    required: 'El número de factura es requerido',
+                  })}
+                  error={!!invoiceErrors.reference_number}
+                  helperText={invoiceErrors.reference_number?.message as string}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Costo de Envío"
+                  type="number"
+                  defaultValue="0"
+                  {...registerInvoice('shipping_cost')}
+                  InputProps={{ inputProps: { step: "0.01" } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Impuestos de Envío"
+                  type="number"
+                  defaultValue="0"
+                  {...registerInvoice('shipping_tax')}
+                  InputProps={{ inputProps: { step: "0.01" } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Total Adicional"
+                  value={
+                    (parseFloat(watchInvoice('shipping_cost') || 0) +
+                     parseFloat(watchInvoice('shipping_tax') || 0)).toFixed(2)
+                  }
+                  disabled
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Notas"
+                  multiline
+                  rows={2}
+                  {...registerInvoice('notes')}
+                />
+              </Grid>
+            </Grid>
+          </form>
+
+          {/* Formulario para agregar items */}
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Agregar Items
+            </Typography>
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={isNewComponent}
+                    onChange={(e) => {
+                      setIsNewComponent(e.target.checked);
+                      setSelectedComponent(null);
+                      resetItem();
+                    }}
+                  />
+                }
+                label={isNewComponent ? "Crear componente nuevo" : "Seleccionar componente existente"}
+              />
+            </Box>
+            
+            <form onSubmit={handleSubmitItem(onAddItem)}>
+              <Grid container spacing={2} alignItems="center">
+                {!isNewComponent ? (
+                  <>
+                    <Grid item xs={12} sm={5}>
+                      <Autocomplete
+                        options={componentsData?.components || []}
+                        getOptionLabel={(option) => `${option.code} - ${option.name}`}
+                        value={selectedComponent}
+                        onChange={(event, newValue) => {
+                          setSelectedComponent(newValue);
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Seleccionar Componente"
+                            error={!selectedComponent && !!itemErrors.component_code}
+                            helperText={!selectedComponent && itemErrors.component_code ? 'Debe seleccionar un componente' : ''}
+                          />
+                        )}
+                        renderOption={(props, option) => (
+                          <Box component="li" {...props}>
+                            <Box>
+                              <Typography variant="body2">
+                                <strong>{option.code}</strong> - {option.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Stock: {option.current_stock} {option.unit_symbol} | Costo: ${option.cost_price}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )}
+                      />
+                    </Grid>
+                  </>
+                ) : (
+                  <>
+                    <Grid item xs={12} sm={2}>
+                      <TextField
+                        fullWidth
+                        label="Código"
+                        {...registerItem('component_code', {
+                          required: 'Requerido',
+                        })}
+                        error={!!itemErrors.component_code}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <TextField
+                        fullWidth
+                        label="Nombre"
+                        {...registerItem('component_name', {
+                          required: 'Requerido',
+                        })}
+                        error={!!itemErrors.component_name}
+                      />
+                    </Grid>
+                  </>
+                )}
+                <Grid item xs={12} sm={2}>
+                  <TextField
+                    fullWidth
+                    label="Cantidad"
+                    type="number"
+                    {...registerItem('quantity', {
+                      required: 'Requerido',
+                      min: { value: 0.01, message: 'Mayor a 0' },
+                    })}
+                    error={!!itemErrors.quantity}
+                    InputProps={{ inputProps: { step: "0.01" } }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={2}>
+                  <TextField
+                    fullWidth
+                    label="Costo Total"
+                    type="number"
+                    {...registerItem('total_cost', {
+                      required: 'Requerido',
+                      min: { value: 0.01, message: 'Mayor a 0' },
+                    })}
+                    error={!!itemErrors.total_cost}
+                    InputProps={{ inputProps: { step: "0.01" } }}
+                  />
+                </Grid>
+                {isNewComponent && (
+                  <Grid item xs={12} sm={2}>
+                    <TextField
+                      fullWidth
+                      label="Unidad"
+                      defaultValue="unit"
+                      {...registerItem('unit')}
+                    />
+                  </Grid>
+                )}
+                <Grid item xs={12} sm={isNewComponent ? 1 : 3}>
+                  <IconButton
+                    color="primary"
+                    type="submit"
+                    size="large"
+                    disabled={!isNewComponent && !selectedComponent}
+                  >
+                    <AddCircle />
+                  </IconButton>
+                  {selectedComponent && !isNewComponent && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption">
+                        Stock actual: {selectedComponent.current_stock} {selectedComponent.unit_symbol}
+                      </Typography>
+                    </Box>
+                  )}
+                </Grid>
+              </Grid>
+            </form>
+          </Box>
+
+          {/* Tabla de items */}
+          {invoiceItems.length > 0 && (
+            <TableContainer component={Paper} sx={{ mt: 3 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Código</TableCell>
+                    <TableCell>Nombre</TableCell>
+                    <TableCell align="right">Cantidad</TableCell>
+                    <TableCell align="right">Costo Total</TableCell>
+                    <TableCell align="right">Costo Unit.</TableCell>
+                    <TableCell>Unidad</TableCell>
+                    <TableCell width="50"></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {invoiceItems.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell>{item.component_code}</TableCell>
+                      <TableCell>{item.component_name}</TableCell>
+                      <TableCell align="right">{item.quantity}</TableCell>
+                      <TableCell align="right">${item.total_cost.toFixed(2)}</TableCell>
+                      <TableCell align="right">
+                        ${(item.total_cost / item.quantity).toFixed(2)}
+                      </TableCell>
+                      <TableCell>{item.unit}</TableCell>
+                      <TableCell>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => removeItem(index)}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell colSpan={2}>
+                      <strong>Total Items: {invoiceItems.reduce((sum, item) => sum + item.quantity, 0)}</strong>
+                    </TableCell>
+                    <TableCell colSpan={2} align="right">
+                      <strong>Total: ${invoiceItems.reduce((sum, item) => sum + item.total_cost, 0).toFixed(2)}</strong>
+                    </TableCell>
+                    <TableCell colSpan={3}></TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setOpenInvoiceDialog(false);
+              setInvoiceItems([]);
+              resetInvoice();
+              setSelectedComponent(null);
+              setIsNewComponent(false);
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitInvoice(onSubmitInvoice)}
+            disabled={createInvoiceMutation.isPending || invoiceItems.length === 0}
+          >
+            Procesar Factura
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

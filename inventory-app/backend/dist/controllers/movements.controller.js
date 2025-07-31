@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getReservations = exports.createReservation = exports.createMovement = exports.getMovements = void 0;
+exports.createInvoice = exports.getReservations = exports.createReservation = exports.createMovement = exports.getMovements = void 0;
 const database_1 = require("@/config/database");
 const getMovements = async (req, res) => {
     try {
@@ -228,4 +228,112 @@ const getReservations = async (req, res) => {
     }
 };
 exports.getReservations = getReservations;
+const createInvoice = async (req, res) => {
+    const client = await database_1.db.getClient();
+    try {
+        await client.query('BEGIN');
+        const { movement_type_id, reference_number, notes, shipping_cost = 0, shipping_tax = 0, items } = req.body;
+        const user_id = req.user.userId;
+        // Obtener tipo de movimiento
+        const typeResult = await client.query('SELECT operation FROM movement_types WHERE id = $1', [movement_type_id]);
+        if (typeResult.rows.length === 0) {
+            throw new Error('Tipo de movimiento no válido');
+        }
+        const operation = typeResult.rows[0].operation;
+        // Calcular el costo adicional por unidad (envío + impuestos)
+        const totalItems = items.reduce((sum, item) => sum + parseFloat(item.quantity), 0);
+        const additionalCostPerUnit = (parseFloat(shipping_cost) + parseFloat(shipping_tax)) / totalItems;
+        const createdMovements = [];
+        for (const item of items) {
+            const { component_code, component_name, quantity, total_cost, unit } = item;
+            // Calcular costo unitario base
+            const unitCostBase = parseFloat(total_cost) / parseFloat(quantity);
+            // Costo unitario final incluyendo costos adicionales
+            const unitCostFinal = unitCostBase + additionalCostPerUnit;
+            // Buscar si el componente existe
+            let componentResult = await client.query('SELECT * FROM components WHERE code = $1', [component_code]);
+            let component_id;
+            if (componentResult.rows.length === 0) {
+                // Si no existe, crear el componente
+                const createComponentResult = await client.query(`INSERT INTO components (
+            code, name, unit, current_stock, min_stock, max_stock, reserved_stock
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, [component_code, component_name, unit || 'unit', 0, 0, 0, 0]);
+                component_id = createComponentResult.rows[0].id;
+            }
+            else {
+                component_id = componentResult.rows[0].id;
+            }
+            // Obtener stock actual
+            const stockResult = await client.query('SELECT current_stock, reserved_stock FROM components WHERE id = $1', [component_id]);
+            const { current_stock, reserved_stock } = stockResult.rows[0];
+            let newStock = parseFloat(current_stock);
+            let newReservedStock = parseFloat(reserved_stock);
+            // Actualizar stock según operación
+            switch (operation) {
+                case 'IN':
+                    newStock += parseFloat(quantity);
+                    break;
+                case 'OUT':
+                    if (newStock - newReservedStock < parseFloat(quantity)) {
+                        throw new Error(`Stock insuficiente para ${component_name}`);
+                    }
+                    newStock -= parseFloat(quantity);
+                    break;
+            }
+            // Actualizar stock del componente
+            await client.query('UPDATE components SET current_stock = $1, reserved_stock = $2 WHERE id = $3', [newStock, newReservedStock, component_id]);
+            // Crear movimiento
+            const movementQuery = `
+        INSERT INTO movements (
+          movement_type_id, component_id, quantity, unit_cost,
+          reference_number, notes, user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+      `;
+            const movementValues = [
+                movement_type_id,
+                component_id,
+                quantity,
+                unitCostFinal,
+                reference_number,
+                `${notes || ''} | Item: ${component_name} | Costo base: ${unitCostBase.toFixed(2)} | Costo adicional: ${additionalCostPerUnit.toFixed(2)}`,
+                user_id
+            ];
+            const movementResult = await client.query(movementQuery, movementValues);
+            createdMovements.push({
+                ...movementResult.rows[0],
+                component_code,
+                component_name,
+                unit_cost_base: unitCostBase,
+                additional_cost: additionalCostPerUnit,
+                newStock,
+                newReservedStock
+            });
+        }
+        await client.query('COMMIT');
+        res.status(201).json({
+            message: 'Factura procesada exitosamente',
+            invoice: {
+                reference_number,
+                movement_type_id,
+                items_count: items.length,
+                total_items: totalItems,
+                shipping_cost: parseFloat(shipping_cost),
+                shipping_tax: parseFloat(shipping_tax),
+                additional_cost_per_unit: additionalCostPerUnit
+            },
+            movements: createdMovements
+        });
+    }
+    catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error al procesar factura:', error);
+        res.status(400).json({ error: error.message || 'Error al procesar factura' });
+    }
+    finally {
+        client.release();
+    }
+};
+exports.createInvoice = createInvoice;
 //# sourceMappingURL=movements.controller.js.map

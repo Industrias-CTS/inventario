@@ -1,7 +1,13 @@
 import api from './api';
 import { Component, StockInfo } from '../types';
 
+export type { Component } from '../types';
+
 export const componentsService = {
+  async getAll(): Promise<Component[]> {
+    const response = await api.get<{ components: Component[] }>('/components');
+    return response.data.components;
+  },
   async getComponents(params?: {
     category_id?: string;
     is_active?: boolean;

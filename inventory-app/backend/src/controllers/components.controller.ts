@@ -89,15 +89,14 @@ export const createComponent = async (req: Request, res: Response) => {
       max_stock,
       location,
       cost_price = 0,
-      sale_price = 0,
     } = req.body;
 
     const query = `
       INSERT INTO components (
         code, name, description, category_id, unit_id,
-        min_stock, max_stock, location, cost_price, sale_price
+        min_stock, max_stock, location, cost_price
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
 
@@ -111,7 +110,6 @@ export const createComponent = async (req: Request, res: Response) => {
       max_stock,
       location,
       cost_price,
-      sale_price,
     ];
 
     const result = await db.query(query, values);

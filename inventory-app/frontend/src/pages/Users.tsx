@@ -26,7 +26,7 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { format } from 'date-fns';
 import { usersService } from '../services/users.service';
 import { User } from '../types';
@@ -75,6 +75,7 @@ export default function Users() {
     handleSubmit,
     reset,
     setValue,
+    control,
     formState: { errors },
   } = useForm<Partial<User & { password?: string; confirmPassword?: string }>>();
 
@@ -314,14 +315,21 @@ export default function Users() {
               </Grid>
               {selectedUser && (
                 <Grid item xs={12} sm={6}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        {...register('is_active')}
-                        defaultChecked={selectedUser.is_active}
+                  <Controller
+                    name="is_active"
+                    control={control}
+                    defaultValue={selectedUser.is_active}
+                    render={({ field }) => (
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={field.value}
+                            onChange={field.onChange}
+                          />
+                        }
+                        label="Usuario Activo"
                       />
-                    }
-                    label="Usuario Activo"
+                    )}
                   />
                 </Grid>
               )}

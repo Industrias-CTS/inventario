@@ -44,7 +44,6 @@ export interface Component {
   reserved_stock: number;
   location?: string;
   cost_price: number;
-  sale_price: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -65,6 +64,11 @@ export interface Recipe {
   updated_at: string;
   output_component?: Component;
   ingredients?: RecipeIngredient[];
+  output_component_code?: string;
+  output_component_name?: string;
+  output_unit_symbol?: string;
+  total_cost?: number;
+  unit_cost?: number;
 }
 
 export interface RecipeIngredient {
@@ -74,6 +78,11 @@ export interface RecipeIngredient {
   quantity: number;
   created_at: string;
   component?: Component;
+  component_code?: string;
+  component_name?: string;
+  unit_symbol?: string;
+  cost_price?: number;
+  ingredient_cost?: number;
 }
 
 export interface MovementType {

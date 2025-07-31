@@ -16,8 +16,10 @@ const PORT = process.env.PORT || 3001;
 // Middlewares de seguridad
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: true, // Permite cualquier origen temporalmente
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(compression());
 
@@ -210,7 +212,7 @@ app.post('/api/components', authenticate, async (req, res) => {
 });
 
 // Rutas de movimientos
-app.get('/api/movements', authenticate, async (req, res) => {
+app.get('/api/movements', authenticate, async (_req, res) => {
   try {
     const movements = await sqliteDb.query(`
       SELECT 
@@ -320,6 +322,164 @@ app.post('/api/movements', authenticate, async (_req, res) => {
   } catch (error) {
     console.error('Error al crear movimiento:', error);
     return res.status(500).json({ error: 'Error al crear movimiento' });
+  }
+});
+
+// Ruta para procesar facturas
+app.post('/api/movements/invoice', authenticate, async (_req, res) => {
+  try {
+    const {
+      movement_type_id,
+      reference_number,
+      notes,
+      shipping_cost = 0,
+      shipping_tax = 0,
+      items
+    } = _req.body;
+    
+    const user_id = (_req as any).user.userId;
+
+    // Obtener tipo de movimiento
+    const movementType = await sqliteDb.get(
+      'SELECT operation FROM movement_types WHERE id = ?',
+      [movement_type_id]
+    );
+    
+    if (!movementType) {
+      return res.status(400).json({ error: 'Tipo de movimiento no válido' });
+    }
+    
+    const operation = movementType.operation;
+    
+    // Calcular el costo adicional por unidad (envío + impuestos)
+    const totalItems = items.reduce((sum: number, item: any) => sum + parseFloat(item.quantity), 0);
+    const additionalCostPerUnit = (parseFloat(shipping_cost) + parseFloat(shipping_tax)) / totalItems;
+    
+    const createdMovements = [];
+    
+    for (const item of items) {
+      const {
+        component_code,
+        component_name,
+        quantity,
+        total_cost,
+        unit
+      } = item;
+      
+      // Calcular costo unitario base
+      const unitCostBase = parseFloat(total_cost) / parseFloat(quantity);
+      // Costo unitario final incluyendo costos adicionales
+      const unitCostFinal = unitCostBase + additionalCostPerUnit;
+      
+      // Buscar si el componente existe
+      let component = await sqliteDb.get(
+        'SELECT * FROM components WHERE code = ?',
+        [component_code]
+      );
+      
+      let component_id;
+      
+      if (!component) {
+        // Si no existe, crear el componente
+        component_id = generateId();
+        await sqliteDb.run(
+          `INSERT INTO components (
+            id, code, name, unit, current_stock, min_stock, max_stock, reserved_stock
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [component_id, component_code, component_name, unit || 'unit', 0, 0, 0, 0]
+        );
+      } else {
+        component_id = component.id;
+      }
+      
+      // Obtener stock actual
+      const stockData = await sqliteDb.get(
+        'SELECT current_stock, reserved_stock FROM components WHERE id = ?',
+        [component_id]
+      );
+      
+      const { current_stock, reserved_stock } = stockData;
+      let newStock = parseFloat(current_stock);
+      let newReservedStock = parseFloat(reserved_stock);
+
+      // Actualizar stock según operación
+      switch (operation) {
+        case 'IN':
+          newStock += parseFloat(quantity);
+          break;
+        case 'OUT':
+          if (newStock - newReservedStock < parseFloat(quantity)) {
+            return res.status(400).json({ error: `Stock insuficiente para ${component_name}` });
+          }
+          newStock -= parseFloat(quantity);
+          break;
+      }
+
+      // Actualizar stock del componente
+      await sqliteDb.run(
+        'UPDATE components SET current_stock = ?, reserved_stock = ? WHERE id = ?',
+        [newStock, newReservedStock, component_id]
+      );
+
+      // Crear movimiento
+      const movementId = generateId();
+      await sqliteDb.run(
+        `INSERT INTO movements (
+          id, movement_type_id, component_id, quantity, unit_cost,
+          reference_number, notes, user_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          movementId,
+          movement_type_id,
+          component_id,
+          quantity,
+          unitCostFinal,
+          reference_number,
+          `${notes || ''} | Item: ${component_name} | Costo base: ${unitCostBase.toFixed(2)} | Costo adicional: ${additionalCostPerUnit.toFixed(2)}`,
+          user_id
+        ]
+      );
+
+      const movement = await sqliteDb.get('SELECT * FROM movements WHERE id = ?', [movementId]);
+      createdMovements.push({
+        ...movement,
+        component_code,
+        component_name,
+        unit_cost_base: unitCostBase,
+        additional_cost: additionalCostPerUnit,
+        newStock,
+        newReservedStock
+      });
+    }
+
+    res.status(201).json({
+      message: 'Factura procesada exitosamente',
+      invoice: {
+        reference_number,
+        movement_type_id,
+        items_count: items.length,
+        total_items: totalItems,
+        shipping_cost: parseFloat(shipping_cost),
+        shipping_tax: parseFloat(shipping_tax),
+        additional_cost_per_unit: additionalCostPerUnit
+      },
+      movements: createdMovements
+    });
+  } catch (error: any) {
+    console.error('Error al procesar factura:', error);
+    return res.status(400).json({ error: error.message || 'Error al procesar factura' });
+  }
+});
+
+// Rutas de tipos de movimiento
+app.get('/api/movement-types', authenticate, async (_req, res) => {
+  try {
+    const movementTypes = await sqliteDb.query('SELECT * FROM movement_types ORDER BY name');
+    res.json({ movementTypes });
+  } catch (error) {
+    console.error('Error al obtener tipos de movimiento:', error);
+    return res.status(500).json({ error: 'Error al obtener tipos de movimiento' });
   }
 });
 

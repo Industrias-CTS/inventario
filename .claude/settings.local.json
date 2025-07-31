@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(sqlite3:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm start)",
+      "Bash(rm:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev-ts:*)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(start cmd /k \"npm start\")",
+      "Bash(start:*)",
+      "Bash(cmd.exe /c start-servers.bat)",
+      "Bash(powershell.exe:*)",
+      "Bash(npx tsc:*)",
+      "Bash(set PORT=3007)",
+      "Bash(cp:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell:*)",
+      "Bash(timeout 10 npm start)",
+      "Bash(cmd /c:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout 10 npm run dev)",
+      "Bash(git add:*)"
+    ],
+    "deny": []
+  }
+}

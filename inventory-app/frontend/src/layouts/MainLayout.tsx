@@ -27,6 +27,7 @@ import {
   AccountCircle,
   Logout,
   People,
+  Timeline,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -37,6 +38,7 @@ const menuItems = [
   { text: 'Componentes', icon: <Inventory />, path: '/components' },
   { text: 'Movimientos', icon: <SwapHoriz />, path: '/movements' },
   { text: 'Recetas', icon: <Receipt />, path: '/recipes' },
+  { text: 'Proyección', icon: <Timeline />, path: '/projection' },
   { text: 'Reportes', icon: <Assessment />, path: '/reports' },
   { text: 'Usuarios', icon: <People />, path: '/users', adminOnly: true },
 ];
