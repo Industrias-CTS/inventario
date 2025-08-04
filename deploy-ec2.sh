@@ -61,47 +61,41 @@ sudo rm -f /etc/nginx/sites-enabled/default
 echo "🔍 Testing nginx configuration..."
 sudo nginx -t
 
-# Build frontend
-if [ -d "inventory-app/frontend" ]; then
-    echo "🏗️ Building frontend..."
-    cd inventory-app/frontend
-    npm install
-    npm run build
-    
-    # Copy build to nginx directory
+# Copy pre-built frontend files
+if [ -d "inventory-app/frontend/build" ]; then
+    echo "📋 Copying frontend build files..."
+    sudo cp -r inventory-app/frontend/build/* /var/www/html/
+elif [ -d "build" ]; then
     echo "📋 Copying build files..."
     sudo cp -r build/* /var/www/html/
-    cd ../..
-elif [ -f "package.json" ]; then
-    echo "🏗️ Building frontend (fallback)..."
-    npm install
-    npm run build
-    
-    # Copy build to nginx directory
-    echo "📋 Copying build files..."
-    sudo cp -r build/* /var/www/html/ || sudo cp -r dist/* /var/www/html/
+elif [ -d "dist" ]; then
+    echo "📋 Copying dist files..."
+    sudo cp -r dist/* /var/www/html/
+else
+    echo "⚠️ No build directory found. Please build frontend locally first."
 fi
 
-# Start backend with PM2
+# Install backend dependencies and start with PM2
 if [ -d "inventory-app/backend" ]; then
-    echo "🚀 Starting backend with PM2..."
+    echo "🚀 Setting up backend..."
     cd inventory-app/backend
     
-    # Build TypeScript backend if needed
-    if [ -f "tsconfig.json" ]; then
-        echo "🔨 Building TypeScript backend..."
-        npm install
-        npm run build 2>/dev/null || npx tsc 2>/dev/null || echo "⚠️ TypeScript build failed, trying to start directly"
-    fi
+    # Install dependencies
+    echo "📦 Installing backend dependencies..."
+    npm install
     
     # Find and start backend file
     if [ -f "dist/index.js" ]; then
+        echo "▶️ Starting compiled backend..."
         pm2 start dist/index.js --name "inventario-backend"
     elif [ -f "src/index.ts" ]; then
+        echo "▶️ Starting TypeScript backend with ts-node..."
         pm2 start src/index.ts --name "inventario-backend" --interpreter="npx" --interpreter-args="ts-node"
     elif [ -f "server.js" ]; then
+        echo "▶️ Starting server.js..."
         pm2 start server.js --name "inventario-backend"
     elif [ -f "index.js" ]; then
+        echo "▶️ Starting index.js..."
         pm2 start index.js --name "inventario-backend"
     else
         echo "⚠️ Backend file not found in inventory-app/backend"
