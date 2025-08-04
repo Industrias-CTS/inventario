@@ -14,9 +14,9 @@ echo "📦 Installing Node.js..."
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# Install nginx
-echo "📦 Installing nginx..."
-sudo apt install -y nginx
+# Install nginx and PostgreSQL
+echo "📦 Installing nginx and PostgreSQL..."
+sudo apt install -y nginx postgresql postgresql-contrib
 
 # Install PM2 for process management
 echo "📦 Installing PM2..."
@@ -26,6 +26,19 @@ sudo npm install -g pm2
 echo "📁 Setting up web directory..."
 sudo mkdir -p /var/www/html
 sudo chown -R $USER:$USER /var/www/html
+
+# Setup PostgreSQL
+echo "🗄️ Setting up PostgreSQL..."
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Create database and user
+sudo -u postgres psql -c "CREATE DATABASE inventory_db;"
+sudo -u postgres psql -c "CREATE USER postgres WITH PASSWORD 'postgres';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE inventory_db TO postgres;"
+sudo -u postgres psql -c "ALTER USER postgres CREATEDB;"
+
+echo "✅ PostgreSQL setup completed"
 
 # Copy and configure nginx with HTTP-only first
 echo "⚙️ Configuring nginx (HTTP-only initially)..."
