@@ -27,9 +27,33 @@ echo "📁 Setting up web directory..."
 sudo mkdir -p /var/www/html
 sudo chown -R $USER:$USER /var/www/html
 
-# Copy and configure nginx
-echo "⚙️ Configuring nginx..."
-sudo cp nginx.conf /etc/nginx/sites-available/inventario
+# Copy and configure nginx with HTTP-only first
+echo "⚙️ Configuring nginx (HTTP-only initially)..."
+sudo tee /etc/nginx/sites-available/inventario > /dev/null <<EOF
+server {
+    listen 80;
+    server_name 34.198.163.51;
+    
+    location / {
+        root /var/www/html;
+        try_files \$uri \$uri/ /index.html;
+        index index.html;
+    }
+    
+    location /api {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+
 sudo ln -sf /etc/nginx/sites-available/inventario /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
@@ -73,11 +97,23 @@ echo "y" | sudo ufw enable
 
 # Setup SSL certificate with Let's Encrypt
 echo "🔒 Setting up SSL certificate..."
-# First, temporarily use HTTP-only config
-sudo cp /etc/nginx/sites-available/inventario /etc/nginx/sites-available/inventario.backup
+sudo systemctl reload nginx
 
-# Create temporary HTTP-only config for certificate generation
-sudo tee /etc/nginx/sites-available/inventario > /dev/null <<EOF
+# Get SSL certificate
+if sudo certbot --nginx -d 34.198.163.51 --non-interactive --agree-tos --email admin@34.198.163.51; then
+    echo "✅ SSL certificate obtained successfully"
+    
+    # Now apply the full HTTPS config
+    echo "🔒 Applying HTTPS configuration..."
+    sudo cp nginx.conf /etc/nginx/sites-available/inventario
+    
+    # Test the new config
+    if sudo nginx -t; then
+        sudo systemctl reload nginx
+        echo "✅ HTTPS configuration applied successfully"
+    else
+        echo "⚠️ HTTPS config failed, reverting to HTTP-only"
+        sudo tee /etc/nginx/sites-available/inventario > /dev/null <<EOF
 server {
     listen 80;
     server_name 34.198.163.51;
@@ -90,25 +126,34 @@ server {
     
     location /api {
         proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
     }
 }
 EOF
-
-# Reload nginx and get certificate
-sudo systemctl reload nginx
-sudo certbot --nginx -d 34.198.163.51 --non-interactive --agree-tos --email admin@34.198.163.51 || echo "⚠️ SSL setup failed, continuing with HTTP"
-
-# Restore full config with SSL
-sudo cp nginx.conf /etc/nginx/sites-available/inventario
-sudo systemctl reload nginx
+        sudo systemctl reload nginx
+    fi
+else
+    echo "⚠️ SSL certificate generation failed, continuing with HTTP-only"
+fi
 
 echo "✅ Deployment completed!"
-echo "🌐 Your app should be accessible at: https://34.198.163.51"
-echo "📊 Backend API available at: https://34.198.163.51/api"
+
+# Check if HTTPS is working
+if [ -f "/etc/letsencrypt/live/34.198.163.51/fullchain.pem" ]; then
+    echo "🌐 Your app is accessible at: https://34.198.163.51"
+    echo "📊 Backend API available at: https://34.198.163.51/api"
+else
+    echo "🌐 Your app is accessible at: http://34.198.163.51"
+    echo "📊 Backend API available at: http://34.198.163.51/api"
+    echo "⚠️ HTTPS is not configured. Run 'sudo certbot --nginx -d 34.198.163.51' to enable HTTPS"
+fi
 echo ""
 echo "📝 Useful commands:"
 echo "  - Check nginx status: sudo systemctl status nginx"
