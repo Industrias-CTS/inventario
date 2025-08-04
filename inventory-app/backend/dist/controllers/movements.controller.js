@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createInvoice = exports.getReservations = exports.createReservation = exports.createMovement = exports.getMovements = void 0;
-const database_1 = require("@/config/database");
+const database_1 = require("../config/database");
 const getMovements = async (req, res) => {
     try {
         const { component_id, movement_type_id, start_date, end_date } = req.query;

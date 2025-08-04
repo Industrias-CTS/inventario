@@ -1,9 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getProfile = exports.login = exports.register = void 0;
-const database_1 = require("@/config/database");
-const password_1 = require("@/utils/password");
-const jwt_1 = require("@/utils/jwt");
+const database_1 = require("../config/database");
+const password_1 = require("../utils/password");
+const jwt_1 = require("../utils/jwt");
 const register = async (req, res) => {
     try {
         const { username, email, password, first_name, last_name, role = 'user' } = req.body;

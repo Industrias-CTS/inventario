@@ -1,1 +1,4 @@
-inventory-app/frontend/node_modules/.cache/
+# Node modules
+**/node_modules/
+
+# Keep databases and environment files

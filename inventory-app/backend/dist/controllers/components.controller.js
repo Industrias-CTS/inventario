@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getComponentStock = exports.deleteComponent = exports.updateComponent = exports.createComponent = exports.getComponentById = exports.getComponents = void 0;
-const database_1 = require("@/config/database");
+const database_1 = require("../config/database");
 const getComponents = async (req, res) => {
     try {
         const { category_id, is_active = true, search } = req.query;

@@ -11,7 +11,7 @@ const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
 const app = express();
-const PORT = process.env.PORT || 3007;
+const PORT = process.env.PORT || 3008;
 // Crear directorio data si no existe
 const dataDir = path.join(__dirname, '../data');
 if (!fs.existsSync(dataDir)) {
@@ -23,7 +23,7 @@ const db = new sqlite3.Database(dbPath);
 // Middlewares de seguridad
 app.use(helmet());
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3005',
+    origin: process.env.FRONTEND_URL || 'http://localhost:3006',
     credentials: true,
 }));
 app.use(compression());
@@ -149,6 +149,69 @@ db.serialize(() => {
       reserved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       expires_at DATETIME,
       completed_at DATETIME
+    )
+  `);
+    // Tabla de recetas
+    db.run(`
+    CREATE TABLE IF NOT EXISTS recipes (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      output_component_id TEXT REFERENCES components(id),
+      output_quantity REAL NOT NULL,
+      is_active BOOLEAN DEFAULT 1,
+      created_by TEXT REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+    // Tabla de ingredientes de recetas
+    db.run(`
+    CREATE TABLE IF NOT EXISTS recipe_ingredients (
+      id TEXT PRIMARY KEY,
+      recipe_id TEXT REFERENCES recipes(id),
+      component_id TEXT REFERENCES components(id),
+      quantity REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(recipe_id, component_id)
+    )
+  `);
+    // Tabla de proyecciones
+    db.run(`
+    CREATE TABLE IF NOT EXISTS projections (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      total_recipes INTEGER NOT NULL,
+      total_items INTEGER NOT NULL,
+      is_feasible BOOLEAN DEFAULT 1,
+      created_by TEXT REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+    // Tabla de recetas de la proyección
+    db.run(`
+    CREATE TABLE IF NOT EXISTS projection_recipes (
+      id TEXT PRIMARY KEY,
+      projection_id TEXT REFERENCES projections(id),
+      recipe_id TEXT REFERENCES recipes(id),
+      quantity INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+    // Tabla de requerimientos de componentes de la proyección
+    db.run(`
+    CREATE TABLE IF NOT EXISTS projection_requirements (
+      id TEXT PRIMARY KEY,
+      projection_id TEXT REFERENCES projections(id),
+      component_id TEXT REFERENCES components(id),
+      required_quantity REAL NOT NULL,
+      available_quantity REAL NOT NULL,
+      shortage REAL NOT NULL,
+      is_available BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
     // Verificar y agregar columnas faltantes
@@ -1233,6 +1296,411 @@ app.get('/api/reports/reservations', authenticate, (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename="reporte-reservas.pdf"');
         doc.pipe(res);
         doc.end();
+    });
+});
+// Rutas de recetas
+app.get('/api/recipes', authenticate, (req, res) => {
+    const query = `
+    SELECT 
+      r.*,
+      c.code as output_component_code,
+      c.name as output_component_name,
+      u.symbol as output_unit_symbol
+    FROM recipes r
+    LEFT JOIN components c ON r.output_component_id = c.id
+    LEFT JOIN units u ON c.unit_id = u.id
+    WHERE r.is_active = 1
+    ORDER BY r.name
+  `;
+    db.all(query, [], (err, recipes) => {
+        if (err) {
+            console.error('Error al obtener recetas:', err);
+            return res.status(500).json({ error: 'Error al obtener recetas' });
+        }
+        // Para cada receta, obtener sus ingredientes
+        const recipesWithIngredients = [];
+        let processed = 0;
+        if (recipes.length === 0) {
+            return res.json({ recipes: [] });
+        }
+        recipes.forEach(recipe => {
+            db.all(`SELECT 
+          ri.*,
+          c.code as component_code,
+          c.name as component_name,
+          u.symbol as unit_symbol,
+          c.cost_price
+        FROM recipe_ingredients ri
+        JOIN components c ON ri.component_id = c.id
+        LEFT JOIN units u ON c.unit_id = u.id
+        WHERE ri.recipe_id = ?`, [recipe.id], (err, ingredients) => {
+                if (err) {
+                    console.error('Error obteniendo ingredientes:', err);
+                }
+                recipe.ingredients = ingredients || [];
+                // Calcular costo total
+                recipe.total_cost = ingredients ? ingredients.reduce((sum, ing) => sum + (ing.quantity * ing.cost_price), 0) : 0;
+                recipe.unit_cost = recipe.output_quantity > 0 ? recipe.total_cost / recipe.output_quantity : 0;
+                recipesWithIngredients.push(recipe);
+                processed++;
+                if (processed === recipes.length) {
+                    res.json({ recipes: recipesWithIngredients });
+                }
+            });
+        });
+    });
+});
+app.get('/api/recipes/:id', authenticate, (req, res) => {
+    const { id } = req.params;
+    db.get(`SELECT 
+      r.*,
+      c.code as output_component_code,
+      c.name as output_component_name,
+      u.symbol as output_unit_symbol
+    FROM recipes r
+    LEFT JOIN components c ON r.output_component_id = c.id
+    LEFT JOIN units u ON c.unit_id = u.id
+    WHERE r.id = ? AND r.is_active = 1`, [id], (err, recipe) => {
+        if (err) {
+            console.error('Error al obtener receta:', err);
+            return res.status(500).json({ error: 'Error al obtener receta' });
+        }
+        if (!recipe) {
+            return res.status(404).json({ error: 'Receta no encontrada' });
+        }
+        // Obtener ingredientes
+        db.all(`SELECT 
+          ri.*,
+          c.code as component_code,
+          c.name as component_name,
+          u.symbol as unit_symbol,
+          c.cost_price,
+          (ri.quantity * c.cost_price) as ingredient_cost
+        FROM recipe_ingredients ri
+        JOIN components c ON ri.component_id = c.id
+        LEFT JOIN units u ON c.unit_id = u.id
+        WHERE ri.recipe_id = ?`, [id], (err, ingredients) => {
+            if (err) {
+                console.error('Error obteniendo ingredientes:', err);
+                return res.status(500).json({ error: 'Error al obtener ingredientes' });
+            }
+            recipe.ingredients = ingredients || [];
+            // Calcular costos
+            recipe.total_cost = ingredients.reduce((sum, ing) => sum + (ing.ingredient_cost || 0), 0);
+            recipe.unit_cost = recipe.output_quantity > 0 ? recipe.total_cost / recipe.output_quantity : 0;
+            res.json({ recipe });
+        });
+    });
+});
+app.post('/api/recipes', authenticate, (req, res) => {
+    if (req.user.role === 'viewer') {
+        return res.status(403).json({ error: 'Acceso denegado: No tienes permisos para crear recetas' });
+    }
+    const { code, name, description, output_component_id, output_quantity, ingredients } = req.body;
+    const recipeId = generateId();
+    db.run(`INSERT INTO recipes (id, code, name, description, output_component_id, output_quantity, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`, [recipeId, code, name, description, output_component_id, output_quantity, req.user.userId], function (err) {
+        if (err) {
+            if (err.message.includes('UNIQUE constraint failed')) {
+                return res.status(400).json({ error: 'El código de la receta ya existe' });
+            }
+            console.error('Error al crear receta:', err);
+            return res.status(500).json({ error: 'Error al crear receta' });
+        }
+        // Insertar ingredientes
+        const insertIngredients = () => {
+            let inserted = 0;
+            if (!ingredients || ingredients.length === 0) {
+                getRecipeAndRespond();
+                return;
+            }
+            ingredients.forEach(ingredient => {
+                const ingredientId = generateId();
+                db.run('INSERT INTO recipe_ingredients (id, recipe_id, component_id, quantity) VALUES (?, ?, ?, ?)', [ingredientId, recipeId, ingredient.component_id, ingredient.quantity], (err) => {
+                    if (err) {
+                        console.error('Error insertando ingrediente:', err);
+                    }
+                    inserted++;
+                    if (inserted === ingredients.length) {
+                        getRecipeAndRespond();
+                    }
+                });
+            });
+        };
+        const getRecipeAndRespond = () => {
+            db.get(`SELECT 
+            r.*,
+            c.code as output_component_code,
+            c.name as output_component_name,
+            u.symbol as output_unit_symbol
+          FROM recipes r
+          LEFT JOIN components c ON r.output_component_id = c.id
+          LEFT JOIN units u ON c.unit_id = u.id
+          WHERE r.id = ?`, [recipeId], (err, recipe) => {
+                if (err) {
+                    console.error('Error obteniendo receta:', err);
+                    return res.status(500).json({ error: 'Error al crear receta' });
+                }
+                res.status(201).json({
+                    message: 'Receta creada exitosamente',
+                    recipe
+                });
+            });
+        };
+        insertIngredients();
+    });
+});
+app.put('/api/recipes/:id', authenticate, (req, res) => {
+    if (req.user.role === 'viewer') {
+        return res.status(403).json({ error: 'Acceso denegado: No tienes permisos para editar recetas' });
+    }
+    const { id } = req.params;
+    const { code, name, description, output_component_id, output_quantity, ingredients } = req.body;
+    db.run(`UPDATE recipes SET code = ?, name = ?, description = ?, output_component_id = ?, 
+     output_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [code, name, description, output_component_id, output_quantity, id], function (err) {
+        if (err) {
+            if (err.message.includes('UNIQUE constraint failed')) {
+                return res.status(400).json({ error: 'El código de la receta ya existe' });
+            }
+            console.error('Error al actualizar receta:', err);
+            return res.status(500).json({ error: 'Error al actualizar receta' });
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Receta no encontrada' });
+        }
+        // Eliminar ingredientes existentes
+        db.run('DELETE FROM recipe_ingredients WHERE recipe_id = ?', [id], (err) => {
+            if (err) {
+                console.error('Error eliminando ingredientes:', err);
+            }
+            // Insertar nuevos ingredientes
+            let inserted = 0;
+            if (!ingredients || ingredients.length === 0) {
+                getRecipeAndRespond();
+                return;
+            }
+            ingredients.forEach(ingredient => {
+                const ingredientId = generateId();
+                db.run('INSERT INTO recipe_ingredients (id, recipe_id, component_id, quantity) VALUES (?, ?, ?, ?)', [ingredientId, id, ingredient.component_id, ingredient.quantity], (err) => {
+                    if (err) {
+                        console.error('Error insertando ingrediente:', err);
+                    }
+                    inserted++;
+                    if (inserted === ingredients.length) {
+                        getRecipeAndRespond();
+                    }
+                });
+            });
+        });
+        const getRecipeAndRespond = () => {
+            db.get(`SELECT 
+            r.*,
+            c.code as output_component_code,
+            c.name as output_component_name,
+            u.symbol as output_unit_symbol
+          FROM recipes r
+          LEFT JOIN components c ON r.output_component_id = c.id
+          LEFT JOIN units u ON c.unit_id = u.id
+          WHERE r.id = ?`, [id], (err, recipe) => {
+                if (err) {
+                    console.error('Error obteniendo receta:', err);
+                    return res.status(500).json({ error: 'Error al actualizar receta' });
+                }
+                res.json({
+                    message: 'Receta actualizada exitosamente',
+                    recipe
+                });
+            });
+        };
+    });
+});
+app.delete('/api/recipes/:id', authenticate, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Acceso denegado: Solo los administradores pueden eliminar recetas' });
+    }
+    const { id } = req.params;
+    db.run('UPDATE recipes SET is_active = 0 WHERE id = ?', [id], function (err) {
+        if (err) {
+            console.error('Error al eliminar receta:', err);
+            return res.status(500).json({ error: 'Error al eliminar receta' });
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Receta no encontrada' });
+        }
+        res.json({ message: 'Receta eliminada exitosamente' });
+    });
+});
+// Rutas de proyecciones
+app.get('/api/projections', authenticate, (req, res) => {
+    const query = `
+    SELECT 
+      p.*,
+      u.username,
+      u.first_name,
+      u.last_name
+    FROM projections p
+    LEFT JOIN users u ON p.created_by = u.id
+    ORDER BY p.created_at DESC
+  `;
+    db.all(query, [], (err, projections) => {
+        if (err) {
+            console.error('Error al obtener proyecciones:', err);
+            return res.status(500).json({ error: 'Error al obtener proyecciones' });
+        }
+        res.json({ projections });
+    });
+});
+app.get('/api/projections/:id', authenticate, (req, res) => {
+    const { id } = req.params;
+    // Obtener la proyección principal
+    db.get(`SELECT 
+      p.*,
+      u.username,
+      u.first_name,
+      u.last_name
+    FROM projections p
+    LEFT JOIN users u ON p.created_by = u.id
+    WHERE p.id = ?`, [id], (err, projection) => {
+        if (err) {
+            console.error('Error al obtener proyección:', err);
+            return res.status(500).json({ error: 'Error al obtener proyección' });
+        }
+        if (!projection) {
+            return res.status(404).json({ error: 'Proyección no encontrada' });
+        }
+        // Obtener las recetas de la proyección
+        db.all(`SELECT 
+          pr.*,
+          r.code as recipe_code,
+          r.name as recipe_name
+        FROM projection_recipes pr
+        JOIN recipes r ON pr.recipe_id = r.id
+        WHERE pr.projection_id = ?`, [id], (err, recipes) => {
+            if (err) {
+                console.error('Error obteniendo recetas:', err);
+                return res.status(500).json({ error: 'Error al obtener recetas' });
+            }
+            // Obtener los requerimientos
+            db.all(`SELECT 
+              pr.*,
+              c.code as component_code,
+              c.name as component_name,
+              u.symbol as unit_symbol
+            FROM projection_requirements pr
+            JOIN components c ON pr.component_id = c.id
+            LEFT JOIN units u ON c.unit_id = u.id
+            WHERE pr.projection_id = ?`, [id], (err, requirements) => {
+                if (err) {
+                    console.error('Error obteniendo requerimientos:', err);
+                    return res.status(500).json({ error: 'Error al obtener requerimientos' });
+                }
+                projection.recipes = recipes || [];
+                projection.requirements = requirements || [];
+                res.json({ projection });
+            });
+        });
+    });
+});
+app.post('/api/projections', authenticate, (req, res) => {
+    if (req.user.role === 'viewer') {
+        return res.status(403).json({ error: 'Acceso denegado: No tienes permisos para crear proyecciones' });
+    }
+    const { name, description, recipes, requirements } = req.body;
+    const projectionId = generateId();
+    // Calcular totales
+    const totalRecipes = recipes.length;
+    const totalItems = recipes.reduce((sum, r) => sum + r.quantity, 0);
+    const isFeasible = requirements.every(r => r.is_available);
+    // Insertar la proyección principal
+    db.run(`INSERT INTO projections (id, name, description, total_recipes, total_items, is_feasible, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`, [projectionId, name, description, totalRecipes, totalItems, isFeasible ? 1 : 0, req.user.userId], function (err) {
+        if (err) {
+            console.error('Error al crear proyección:', err);
+            return res.status(500).json({ error: 'Error al crear proyección' });
+        }
+        // Insertar las recetas
+        let recipesInserted = 0;
+        let requirementsInserted = 0;
+        let hasError = false;
+        const checkComplete = () => {
+            if (!hasError && recipesInserted === recipes.length && requirementsInserted === requirements.length) {
+                db.get(`SELECT 
+              p.*,
+              u.username,
+              u.first_name,
+              u.last_name
+            FROM projections p
+            LEFT JOIN users u ON p.created_by = u.id
+            WHERE p.id = ?`, [projectionId], (err, projection) => {
+                    if (err) {
+                        console.error('Error obteniendo proyección:', err);
+                        return res.status(500).json({ error: 'Error al crear proyección' });
+                    }
+                    res.status(201).json({
+                        message: 'Proyección guardada exitosamente',
+                        projection
+                    });
+                });
+            }
+        };
+        // Insertar recetas
+        recipes.forEach(recipe => {
+            const recipeId = generateId();
+            db.run('INSERT INTO projection_recipes (id, projection_id, recipe_id, quantity) VALUES (?, ?, ?, ?)', [recipeId, projectionId, recipe.recipe_id, recipe.quantity], (err) => {
+                if (err) {
+                    console.error('Error insertando receta de proyección:', err);
+                    hasError = true;
+                }
+                recipesInserted++;
+                checkComplete();
+            });
+        });
+        // Insertar requerimientos
+        requirements.forEach(req => {
+            const requirementId = generateId();
+            db.run(`INSERT INTO projection_requirements 
+           (id, projection_id, component_id, required_quantity, available_quantity, shortage, is_available) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`, [requirementId, projectionId, req.component_id, req.required_quantity,
+                req.available_quantity, req.shortage, req.is_available ? 1 : 0], (err) => {
+                if (err) {
+                    console.error('Error insertando requerimiento:', err);
+                    hasError = true;
+                }
+                requirementsInserted++;
+                checkComplete();
+            });
+        });
+    });
+});
+app.delete('/api/projections/:id', authenticate, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Acceso denegado: Solo los administradores pueden eliminar proyecciones' });
+    }
+    const { id } = req.params;
+    // Eliminar requerimientos primero
+    db.run('DELETE FROM projection_requirements WHERE projection_id = ?', [id], (err) => {
+        if (err) {
+            console.error('Error eliminando requerimientos:', err);
+            return res.status(500).json({ error: 'Error al eliminar proyección' });
+        }
+        // Eliminar recetas
+        db.run('DELETE FROM projection_recipes WHERE projection_id = ?', [id], (err) => {
+            if (err) {
+                console.error('Error eliminando recetas:', err);
+                return res.status(500).json({ error: 'Error al eliminar proyección' });
+            }
+            // Eliminar proyección principal
+            db.run('DELETE FROM projections WHERE id = ?', [id], function (err) {
+                if (err) {
+                    console.error('Error eliminando proyección:', err);
+                    return res.status(500).json({ error: 'Error al eliminar proyección' });
+                }
+                if (this.changes === 0) {
+                    return res.status(404).json({ error: 'Proyección no encontrada' });
+                }
+                res.json({ message: 'Proyección eliminada exitosamente' });
+            });
+        });
     });
 });
 // Health check

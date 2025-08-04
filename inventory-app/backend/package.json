@@ -8,8 +8,8 @@
     "dev-ts": "npx ts-node src/index-db.ts",
     "dev-simple": "npx ts-node src/index-simple.ts",
     "dev-full": "nodemon",
-    "build": "tsc",
-    "start": "node -r tsconfig-paths/register dist/index.js",
+    "build": "tsc && tsc-alias",
+    "start": "node dist/index.js",
     "migrate": "node dist/database/migrate.js",
     "seed": "node dist/database/seed.js"
   },
@@ -47,6 +47,7 @@
     "@types/pg": "^8.10.9",
     "nodemon": "^3.0.2",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.16",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.3.3"
   }

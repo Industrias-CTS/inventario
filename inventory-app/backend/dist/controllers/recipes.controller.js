@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteRecipe = exports.updateRecipe = exports.createRecipe = exports.getRecipeById = exports.getRecipes = void 0;
-const database_1 = require("@/config/database");
+const database_1 = require("../config/database");
 const getRecipes = async (req, res) => {
     try {
         const { is_active = true, search } = req.query;
