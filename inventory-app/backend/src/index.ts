@@ -15,8 +15,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Trust proxy for nginx
-app.set('trust proxy', true);
+// Trust proxy for nginx (only trust localhost/nginx)
+app.set('trust proxy', 1);
 
 // Middlewares de seguridad
 app.use(helmet());
