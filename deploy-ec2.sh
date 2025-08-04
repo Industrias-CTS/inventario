@@ -14,9 +14,9 @@ echo "📦 Installing Node.js..."
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# Install nginx and certbot
-echo "📦 Installing nginx and certbot..."
-sudo apt install -y nginx certbot python3-certbot-nginx
+# Install nginx
+echo "📦 Installing nginx..."
+sudo apt install -y nginx
 
 # Install PM2 for process management
 echo "📦 Installing PM2..."
@@ -61,9 +61,19 @@ sudo rm -f /etc/nginx/sites-enabled/default
 echo "🔍 Testing nginx configuration..."
 sudo nginx -t
 
-# Build frontend (assuming package.json exists)
-if [ -f "package.json" ]; then
+# Build frontend
+if [ -d "inventory-app/frontend" ]; then
     echo "🏗️ Building frontend..."
+    cd inventory-app/frontend
+    npm install
+    npm run build
+    
+    # Copy build to nginx directory
+    echo "📋 Copying build files..."
+    sudo cp -r build/* /var/www/html/
+    cd ../..
+elif [ -f "package.json" ]; then
+    echo "🏗️ Building frontend (fallback)..."
     npm install
     npm run build
     
@@ -72,11 +82,38 @@ if [ -f "package.json" ]; then
     sudo cp -r build/* /var/www/html/ || sudo cp -r dist/* /var/www/html/
 fi
 
-# Start backend with PM2 (assuming main backend file)
-if [ -f "server.js" ] || [ -f "index.js" ] || [ -f "app.js" ]; then
+# Start backend with PM2
+if [ -d "inventory-app/backend" ]; then
     echo "🚀 Starting backend with PM2..."
+    cd inventory-app/backend
+    
+    # Build TypeScript backend if needed
+    if [ -f "tsconfig.json" ]; then
+        echo "🔨 Building TypeScript backend..."
+        npm install
+        npm run build 2>/dev/null || npx tsc 2>/dev/null || echo "⚠️ TypeScript build failed, trying to start directly"
+    fi
+    
+    # Find and start backend file
+    if [ -f "dist/index.js" ]; then
+        pm2 start dist/index.js --name "inventario-backend"
+    elif [ -f "src/index.ts" ]; then
+        pm2 start src/index.ts --name "inventario-backend" --interpreter="npx" --interpreter-args="ts-node"
+    elif [ -f "server.js" ]; then
+        pm2 start server.js --name "inventario-backend"
+    elif [ -f "index.js" ]; then
+        pm2 start index.js --name "inventario-backend"
+    else
+        echo "⚠️ Backend file not found in inventory-app/backend"
+    fi
+    
+    pm2 startup
+    pm2 save
+    cd ../..
+elif [ -f "server.js" ] || [ -f "index.js" ] || [ -f "app.js" ]; then
+    echo "🚀 Starting backend with PM2 (fallback)..."
     BACKEND_FILE=$(ls server.js index.js app.js 2>/dev/null | head -1)
-    pm2 start $BACKEND_FILE --name "inventario-backend" || echo "⚠️ Backend file not found, please start manually"
+    pm2 start $BACKEND_FILE --name "inventario-backend"
     pm2 startup
     pm2 save
 fi
@@ -95,65 +132,13 @@ sudo ufw allow 80
 sudo ufw allow 443
 echo "y" | sudo ufw enable
 
-# Setup SSL certificate with Let's Encrypt
-echo "🔒 Setting up SSL certificate..."
-sudo systemctl reload nginx
-
-# Get SSL certificate
-if sudo certbot --nginx -d 34.198.163.51 --non-interactive --agree-tos --email admin@34.198.163.51; then
-    echo "✅ SSL certificate obtained successfully"
-    
-    # Now apply the full HTTPS config
-    echo "🔒 Applying HTTPS configuration..."
-    sudo cp nginx.conf /etc/nginx/sites-available/inventario
-    
-    # Test the new config
-    if sudo nginx -t; then
-        sudo systemctl reload nginx
-        echo "✅ HTTPS configuration applied successfully"
-    else
-        echo "⚠️ HTTPS config failed, reverting to HTTP-only"
-        sudo tee /etc/nginx/sites-available/inventario > /dev/null <<EOF
-server {
-    listen 80;
-    server_name 34.198.163.51;
-    
-    location / {
-        root /var/www/html;
-        try_files \$uri \$uri/ /index.html;
-        index index.html;
-    }
-    
-    location /api {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-    }
-}
-EOF
-        sudo systemctl reload nginx
-    fi
-else
-    echo "⚠️ SSL certificate generation failed, continuing with HTTP-only"
-fi
+# Keep HTTP-only configuration (no SSL for IP addresses)
+echo "✅ Using HTTP-only configuration"
 
 echo "✅ Deployment completed!"
 
-# Check if HTTPS is working
-if [ -f "/etc/letsencrypt/live/34.198.163.51/fullchain.pem" ]; then
-    echo "🌐 Your app is accessible at: https://34.198.163.51"
-    echo "📊 Backend API available at: https://34.198.163.51/api"
-else
-    echo "🌐 Your app is accessible at: http://34.198.163.51"
-    echo "📊 Backend API available at: http://34.198.163.51/api"
-    echo "⚠️ HTTPS is not configured. Run 'sudo certbot --nginx -d 34.198.163.51' to enable HTTPS"
-fi
+echo "🌐 Your app is accessible at: http://34.198.163.51"
+echo "📊 Backend API available at: http://34.198.163.51/api"
 echo ""
 echo "📝 Useful commands:"
 echo "  - Check nginx status: sudo systemctl status nginx"
