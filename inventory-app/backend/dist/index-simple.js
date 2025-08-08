@@ -175,4 +175,4 @@ process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     process.exit(1);
 });
-//# sourceMappingURL=index.optimized.js.map
+//# sourceMappingURL=index-simple.js.map
