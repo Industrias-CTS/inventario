@@ -363,13 +363,40 @@ const createInvoice = async (req, res) => {
                     await database_config_1.db.run('UPDATE components SET current_stock = ?, updated_at = ? WHERE id = ?', [newStock, now, component.id]);
                 }
                 const movementId = generateId();
+                // Map movement type to valid table type values
+                let tableType = 'salida'; // Default to 'salida' (out)
+                switch (movementType.operation) {
+                    case 'IN':
+                        tableType = 'entrada';
+                        break;
+                    case 'OUT':
+                        tableType = 'salida';
+                        break;
+                    case 'RESERVE':
+                        tableType = 'reserva';
+                        break;
+                    case 'RELEASE':
+                        tableType = 'liberacion';
+                        break;
+                    default:
+                        tableType = 'ajuste';
+                        break;
+                }
+                // Insert movement using the correct table structure
                 await database_config_1.db.run(`INSERT INTO movements (
-            id, movement_type_id, component_id, quantity,
-            unit_cost, reference_number, notes, user_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-                    movementId, movement_type_id, component.id, item.quantity,
-                    item.unit_cost || 0, reference_number,
-                    notes || `Factura ${reference_number}`, userId, now
+            id, type, component_id, quantity,
+            unit_cost, total_cost, reference, notes, user_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+                    movementId,
+                    tableType, // Use mapped type value
+                    component.id,
+                    item.quantity,
+                    item.unit_cost || 0,
+                    item.total_cost || (item.quantity * (item.unit_cost || 0)),
+                    reference_number,
+                    notes || `Factura ${reference_number}`,
+                    userId,
+                    now
                 ]);
                 movements.push({
                     id: movementId,
