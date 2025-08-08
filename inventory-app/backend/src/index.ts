@@ -4,74 +4,193 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-
-import authRoutes from '@/routes/auth.routes';
-import componentsRoutes from '@/routes/components.routes';
-import movementsRoutes from '@/routes/movements.routes';
-import recipesRoutes from '@/routes/recipes.routes';
+import { db } from './config/database.config';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Trust proxy for nginx (only trust localhost/nginx)
-app.set('trust proxy', 1);
+async function startServer() {
+  try {
+    await db.initialize();
+    console.log('Base de datos inicializada correctamente');
 
-// Middlewares de seguridad
-app.use(helmet());
-app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:3000',
-    'http://34.198.163.51',
-    'https://34.198.163.51',
-    'http://localhost:3000',
-    'http://localhost:3006'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-}));
-app.use(compression());
+    app.set('trust proxy', 1);
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
-  message: 'Demasiadas solicitudes desde esta IP',
-  standardHeaders: true,
-  legacyHeaders: false,
+    app.use(helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" }
+    }));
+
+    app.use(cors({
+      origin: function(origin, callback) {
+        const allowedOrigins = [
+          'http://localhost:3000',
+          'http://localhost:3001', 
+          'http://localhost:3006',
+          'http://34.198.163.51',
+          process.env.FRONTEND_URL
+        ].filter(Boolean);
+        
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(null, true);
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    }));
+
+    app.use(compression());
+
+    const limiter = rateLimit({
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+      message: 'Demasiadas solicitudes desde esta IP',
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => {
+        return req.ip === '127.0.0.1' || req.ip === '::1';
+      }
+    });
+
+    app.use('/api/', limiter);
+
+    app.use(express.json({ limit: '10mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+    app.use((req, _res, next) => {
+      console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+      next();
+    });
+
+    const authRoutes = require('./routes/auth.routes').default;
+    const componentsRoutes = require('./routes/components.routes').default;
+    const movementsRoutes = require('./routes/movements.routes').default;
+    const recipesRoutes = require('./routes/recipes.routes').default;
+
+    app.use('/api/auth', authRoutes);
+    app.use('/api/components', componentsRoutes);
+    app.use('/api/movements', movementsRoutes);
+    app.use('/api/recipes', recipesRoutes);
+
+    app.get('/api/categories', async (_req, res) => {
+      try {
+        const categories = await db.query('SELECT * FROM categories ORDER BY name');
+        res.json({ categories });
+      } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener categorías' });
+      }
+    });
+
+    app.get('/api/units', async (_req, res) => {
+      try {
+        const units = await db.query('SELECT * FROM units ORDER BY name');
+        res.json({ units });
+      } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener unidades' });
+      }
+    });
+
+    app.get('/api/movement-types', async (_req, res) => {
+      try {
+        const types = await db.query('SELECT * FROM movement_types ORDER BY name');
+        res.json({ movementTypes: types });
+      } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener tipos de movimiento' });
+      }
+    });
+
+    app.get('/api/users', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+          return res.status(401).json({ error: 'No autorizado' });
+        }
+
+        const users = await db.query(
+          'SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY username'
+        );
+        res.json({ users });
+      } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener usuarios' });
+      }
+    });
+
+    app.get('/health', (_req, res) => {
+      res.json({ 
+        status: 'OK', 
+        timestamp: new Date(),
+        database: 'connected',
+        version: '1.0.0'
+      });
+    });
+
+    app.get('/', (_req, res) => {
+      res.json({ 
+        message: 'API de Inventario',
+        version: '1.0.0',
+        endpoints: {
+          auth: '/api/auth',
+          components: '/api/components',
+          movements: '/api/movements',
+          recipes: '/api/recipes',
+          categories: '/api/categories',
+          units: '/api/units',
+          movementTypes: '/api/movement-types',
+          users: '/api/users',
+          health: '/health'
+        }
+      });
+    });
+
+    app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      console.error('Error:', err);
+      res.status(err.status || 500).json({
+        error: err.message || 'Error interno del servidor',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+      });
+    });
+
+    app.use((_req, res) => {
+      res.status(404).json({ error: 'Ruta no encontrada' });
+    });
+
+    app.listen(PORT, () => {
+      console.log(`
+========================================
+    Servidor de Inventario v1.0.0
+========================================
+    Puerto: ${PORT}
+    Entorno: ${process.env.NODE_ENV || 'development'}
+    Base de datos: SQLite
+    URL Frontend: ${process.env.FRONTEND_URL || 'http://localhost:3000'}
+========================================
+    API disponible en: http://localhost:${PORT}
+    Health check: http://localhost:${PORT}/health
+========================================
+      `);
+    });
+
+  } catch (error) {
+    console.error('Error al iniciar el servidor:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
-app.use('/api/', limiter);
 
-// Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Rutas
-app.use('/api/auth', authRoutes);
-app.use('/api/components', componentsRoutes);
-app.use('/api/movements', movementsRoutes);
-app.use('/api/recipes', recipesRoutes);
-
-// Health check
-app.get('/health', (_req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
-});
-
-// Error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
-    error: err.message || 'Error interno del servidor',
-  });
-});
-
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Ruta no encontrada' });
-});
-
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en puerto ${PORT}`);
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
 });

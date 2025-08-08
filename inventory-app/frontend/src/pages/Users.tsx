@@ -88,7 +88,6 @@ export default function Users() {
     register,
     handleSubmit,
     reset,
-    setValue,
     control,
     formState: { errors },
   } = useForm<Partial<User & { password?: string; confirmPassword?: string }>>();

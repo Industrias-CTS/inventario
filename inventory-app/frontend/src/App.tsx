@@ -19,7 +19,7 @@ import Movements from './pages/Movements';
 import Recipes from './pages/Recipes';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
-import { Projection } from './pages/Projection';
+import Projection from './pages/Projection';
 
 const theme = createTheme({
   palette: {

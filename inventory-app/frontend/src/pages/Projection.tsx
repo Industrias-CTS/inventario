@@ -33,12 +33,11 @@ import {
   Save as SaveIcon,
   Folder as FolderIcon,
   Visibility as VisibilityIcon,
-  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesService, Recipe } from '../services/recipes.service';
 import { componentsService, Component } from '../services/components.service';
-import { projectionsService, Projection } from '../services/projections.service';
+import { projectionsService, Projection as ProjectionType } from '../services/projections.service';
 
 interface RecipeProjection {
   recipe: Recipe;
@@ -65,8 +64,8 @@ export default function Projection() {
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [projectionName, setProjectionName] = useState('');
   const [projectionDescription, setProjectionDescription] = useState('');
-  const [savedProjections, setSavedProjections] = useState<Projection[]>([]);
-  const [selectedProjection, setSelectedProjection] = useState<Projection | null>(null);
+  const [savedProjections, setSavedProjections] = useState<ProjectionType[]>([]);
+  const [selectedProjection, setSelectedProjection] = useState<ProjectionType | null>(null);
   const queryClient = useQueryClient();
 
   const saveProjectionMutation = useMutation({
@@ -132,7 +131,7 @@ export default function Projection() {
     setOpenViewDialog(true);
   };
 
-  const handleViewProjectionDetail = async (projection: Projection) => {
+  const handleViewProjectionDetail = async (projection: ProjectionType) => {
     try {
       const fullProjection = await projectionsService.getById(projection.id);
       setSelectedProjection(fullProjection);
