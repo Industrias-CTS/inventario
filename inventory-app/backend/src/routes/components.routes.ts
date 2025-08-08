@@ -24,9 +24,12 @@ router.post(
   [
     body('code').notEmpty().withMessage('El código es requerido'),
     body('name').notEmpty().withMessage('El nombre es requerido'),
-    body('unit_id').isUUID().withMessage('ID de unidad inválido'),
-    body('min_stock').isNumeric().withMessage('Stock mínimo debe ser numérico'),
-    body('cost_price').isNumeric().withMessage('Precio de costo debe ser numérico'),
+    body('unit_id').notEmpty().withMessage('ID de unidad es requerido'),
+    body('category_id').optional(),
+    body('min_stock').optional().isNumeric().withMessage('Stock mínimo debe ser numérico'),
+    body('max_stock').optional().isNumeric().withMessage('Stock máximo debe ser numérico'),
+    body('cost_price').optional().isNumeric().withMessage('Precio de costo debe ser numérico'),
+    body('sale_price').optional().isNumeric().withMessage('Precio de venta debe ser numérico'),
   ],
   validateRequest,
   createComponent

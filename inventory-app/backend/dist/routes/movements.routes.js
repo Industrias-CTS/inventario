@@ -8,17 +8,17 @@ const validation_1 = require("../middlewares/validation");
 const router = (0, express_1.Router)();
 router.get('/', auth_1.authenticate, movements_controller_1.getMovements);
 router.post('/', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
-    (0, express_validator_1.body)('movement_type_id').isUUID().withMessage('ID de tipo de movimiento inválido'),
-    (0, express_validator_1.body)('component_id').isUUID().withMessage('ID de componente inválido'),
+    (0, express_validator_1.body)('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
+    (0, express_validator_1.body)('component_id').notEmpty().withMessage('ID de componente es requerido'),
     (0, express_validator_1.body)('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
 ], validation_1.validateRequest, movements_controller_1.createMovement);
 router.get('/reservations', auth_1.authenticate, movements_controller_1.getReservations);
 router.post('/reservations', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
-    (0, express_validator_1.body)('component_id').isUUID().withMessage('ID de componente inválido'),
+    (0, express_validator_1.body)('component_id').notEmpty().withMessage('ID de componente es requerido'),
     (0, express_validator_1.body)('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
 ], validation_1.validateRequest, movements_controller_1.createReservation);
 router.post('/invoice', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
-    (0, express_validator_1.body)('movement_type_id').isUUID().withMessage('ID de tipo de movimiento inválido'),
+    (0, express_validator_1.body)('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
     (0, express_validator_1.body)('reference_number').notEmpty().withMessage('Número de referencia es requerido'),
     (0, express_validator_1.body)('items').isArray({ min: 1 }).withMessage('Debe incluir al menos un item'),
     (0, express_validator_1.body)('items.*.component_code').notEmpty().withMessage('Código de componente es requerido'),

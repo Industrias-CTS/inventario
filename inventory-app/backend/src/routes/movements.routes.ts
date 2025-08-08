@@ -19,8 +19,8 @@ router.post(
   authenticate,
   authorize('admin', 'user'),
   [
-    body('movement_type_id').isUUID().withMessage('ID de tipo de movimiento inválido'),
-    body('component_id').isUUID().withMessage('ID de componente inválido'),
+    body('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
+    body('component_id').notEmpty().withMessage('ID de componente es requerido'),
     body('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
   ],
   validateRequest,
@@ -34,7 +34,7 @@ router.post(
   authenticate,
   authorize('admin', 'user'),
   [
-    body('component_id').isUUID().withMessage('ID de componente inválido'),
+    body('component_id').notEmpty().withMessage('ID de componente es requerido'),
     body('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
   ],
   validateRequest,
@@ -46,7 +46,7 @@ router.post(
   authenticate,
   authorize('admin', 'user'),
   [
-    body('movement_type_id').isUUID().withMessage('ID de tipo de movimiento inválido'),
+    body('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
     body('reference_number').notEmpty().withMessage('Número de referencia es requerido'),
     body('items').isArray({ min: 1 }).withMessage('Debe incluir al menos un item'),
     body('items.*.component_code').notEmpty().withMessage('Código de componente es requerido'),
