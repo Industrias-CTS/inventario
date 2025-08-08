@@ -433,6 +433,49 @@ export const createInvoice = async (req: Request, res: Response) => {
           throw new Error(`Componente con código ${item.component_code} no encontrado`);
         }
 
+        // Get movement type to determine if we need to update stock
+        const movementType = await db.get(
+          'SELECT * FROM movement_types WHERE id = ?',
+          [movement_type_id]
+        );
+
+        if (!movementType) {
+          throw new Error('Tipo de movimiento no válido');
+        }
+
+        // Update component stock based on movement type
+        let newStock = component.current_stock;
+        const quantity = Number(item.quantity);
+
+        switch (movementType.operation) {
+          case 'IN':
+            newStock += quantity;
+            break;
+          case 'OUT':
+            if (component.current_stock < quantity) {
+              throw new Error(`Stock insuficiente para el componente ${item.component_code}. Stock disponible: ${component.current_stock}, solicitado: ${quantity}`);
+            }
+            newStock -= quantity;
+            break;
+          case 'RESERVE':
+            if ((component.current_stock - (component.reserved_stock || 0)) < quantity) {
+              throw new Error(`Stock disponible insuficiente para reservar ${item.component_code}`);
+            }
+            await db.run(
+              'UPDATE components SET reserved_stock = ?, updated_at = ? WHERE id = ?',
+              [(component.reserved_stock || 0) + quantity, now, component.id]
+            );
+            break;
+        }
+
+        // Update stock if it's IN or OUT operation
+        if (movementType.operation === 'IN' || movementType.operation === 'OUT') {
+          await db.run(
+            'UPDATE components SET current_stock = ?, updated_at = ? WHERE id = ?',
+            [newStock, now, component.id]
+          );
+        }
+
         const movementId = generateId();
         
         await db.run(
@@ -453,7 +496,8 @@ export const createInvoice = async (req: Request, res: Response) => {
           component_name: item.component_name,
           quantity: item.quantity,
           unit_cost: item.unit_cost || 0,
-          total_cost: item.total_cost
+          total_cost: item.total_cost,
+          new_stock: newStock
         });
 
         totalInvoiceAmount += Number(item.total_cost);
