@@ -13,7 +13,6 @@ import {
   TextField,
   Grid,
   MenuItem,
-  // Alert,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import {
@@ -406,14 +405,16 @@ export default function Components() {
                       </TextField>
                     )}
                   />
-                  <Button
-                    variant="outlined"
-                    onClick={() => setOpenCategoryDialog(true)}
-                    sx={{ mt: 0, minWidth: 'auto', px: 2 }}
-                    title="Crear nueva categoría"
-                  >
-                    <Add />
-                  </Button>
+                  {isAdmin && (
+                    <IconButton
+                      color="primary"
+                      onClick={() => setOpenCategoryDialog(true)}
+                      sx={{ mt: 1 }}
+                      title="Agregar nueva categoría"
+                    >
+                      <Add />
+                    </IconButton>
+                  )}
                 </Box>
               </Grid>
               <Grid item xs={12} sm={6}>

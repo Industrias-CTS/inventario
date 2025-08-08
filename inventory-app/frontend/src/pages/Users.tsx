@@ -19,7 +19,6 @@ import {
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import {
-  // Add,
   Edit,
   Delete,
   PersonAdd,
@@ -45,28 +44,43 @@ export default function Users() {
 
   const createMutation = useMutation({
     mutationFn: usersService.createUser,
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setOpenDialog(false);
       reset();
+      alert(`Usuario creado exitosamente: ${response.message}`);
+    },
+    onError: (error: any) => {
+      console.error('Error al crear usuario:', error);
+      alert(`Error al crear usuario: ${error.response?.data?.error || error.message}`);
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<User & { password?: string }> }) =>
       usersService.updateUser(id, data),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setOpenDialog(false);
       setSelectedUser(null);
       reset();
+      alert(`Usuario actualizado exitosamente: ${response.message}`);
+    },
+    onError: (error: any) => {
+      console.error('Error al actualizar usuario:', error);
+      alert(`Error al actualizar usuario: ${error.response?.data?.error || error.message}`);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: usersService.deleteUser,
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      alert(`Usuario desactivado exitosamente: ${response.message}`);
+    },
+    onError: (error: any) => {
+      console.error('Error al desactivar usuario:', error);
+      alert(`Error al desactivar usuario: ${error.response?.data?.error || error.message}`);
     },
   });
 
@@ -137,6 +151,8 @@ export default function Users() {
             size="small"
             onClick={() => handleEdit(params.row)}
             color="primary"
+            title="Editar usuario"
+            disabled={updateMutation.isPending}
           >
             <Edit />
           </IconButton>
@@ -145,6 +161,8 @@ export default function Users() {
               size="small"
               onClick={() => handleDelete(params.row.id)}
               color="error"
+              title="Desactivar usuario"
+              disabled={deleteMutation.isPending}
             >
               <Delete />
             </IconButton>
@@ -156,12 +174,19 @@ export default function Users() {
 
   const handleEdit = (user: User) => {
     setSelectedUser(user);
-    setValue('username', user.username);
-    setValue('email', user.email);
-    setValue('first_name', user.first_name);
-    setValue('last_name', user.last_name);
-    setValue('role', user.role);
-    setValue('is_active', user.is_active);
+    
+    // Resetear formulario y cargar datos del usuario
+    reset({
+      username: user.username || '',
+      email: user.email || '',
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      role: user.role || 'user',
+      is_active: user.is_active !== undefined ? user.is_active : true,
+      password: '',
+      confirmPassword: '',
+    });
+    
     setOpenDialog(true);
   };
 
@@ -184,7 +209,16 @@ export default function Users() {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setSelectedUser(null);
-    reset();
+    reset({
+      username: '',
+      email: '',
+      first_name: '',
+      last_name: '',
+      role: 'user',
+      is_active: true,
+      password: '',
+      confirmPassword: '',
+    });
   };
 
   if (currentUser?.role !== 'admin') {
@@ -299,19 +333,27 @@ export default function Users() {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Rol"
-                  select
+                <Controller
+                  name="role"
+                  control={control}
                   defaultValue="user"
-                  {...register('role', { required: 'El rol es requerido' })}
-                  error={!!errors.role}
-                  helperText={errors.role?.message}
-                >
-                  <MenuItem value="admin">Administrador</MenuItem>
-                  <MenuItem value="user">Usuario</MenuItem>
-                  <MenuItem value="viewer">Visualizador</MenuItem>
-                </TextField>
+                  rules={{ required: 'El rol es requerido' }}
+                  render={({ field, fieldState }) => (
+                    <TextField
+                      fullWidth
+                      label="Rol"
+                      select
+                      value={field.value || 'user'}
+                      onChange={field.onChange}
+                      error={!!fieldState.error}
+                      helperText={fieldState.error?.message}
+                    >
+                      <MenuItem value="admin">Administrador</MenuItem>
+                      <MenuItem value="user">Usuario</MenuItem>
+                      <MenuItem value="viewer">Visualizador</MenuItem>
+                    </TextField>
+                  )}
+                />
               </Grid>
               {selectedUser && (
                 <Grid item xs={12} sm={6}>

@@ -4,7 +4,8 @@
   "description": "Backend para sistema de inventario",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "node src/index-simple-db.js",
+    "dev": "npx ts-node src/index.optimized.ts",
+    "dev-original": "npx ts-node src/index.ts",
     "dev-ts": "npx ts-node src/index-db.ts",
     "dev-simple": "npx ts-node src/index-simple.ts",
     "dev-full": "nodemon",

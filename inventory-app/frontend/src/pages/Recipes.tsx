@@ -57,6 +57,7 @@ export default function Recipes() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState(false);
+  const [loadingRecipe, setLoadingRecipe] = useState(false);
   const queryClient = useQueryClient();
   
   // Obtener usuario actual para verificar permisos
@@ -76,7 +77,6 @@ export default function Recipes() {
   const createMutation = useMutation({
     mutationFn: recipesService.createRecipe,
     onSuccess: () => {
-      console.log('Recipe created successfully');
       queryClient.invalidateQueries({ queryKey: ['recipes'] });
       setOpenDialog(false);
       reset({
@@ -205,6 +205,7 @@ export default function Recipes() {
             onClick={() => handleView(params.row)}
             color="info"
             title="Ver receta"
+            disabled={loadingRecipe}
           >
             <Visibility />
           </IconButton>
@@ -215,6 +216,7 @@ export default function Recipes() {
                 onClick={() => handleEdit(params.row)}
                 color="primary"
                 title="Editar receta"
+                disabled={loadingRecipe}
               >
                 <Edit />
               </IconButton>
@@ -235,36 +237,44 @@ export default function Recipes() {
 
   const handleView = async (recipe: Recipe) => {
     try {
+      setLoadingRecipe(true);
       const fullRecipe = await recipesService.getRecipeById(recipe.id);
       setSelectedRecipe(fullRecipe.recipe);
       setViewMode(true);
       setOpenDialog(true);
     } catch (error) {
       console.error('Error al cargar receta:', error);
+      alert('Error al cargar los detalles de la receta');
+    } finally {
+      setLoadingRecipe(false);
     }
   };
 
   const handleEdit = async (recipe: Recipe) => {
     try {
+      setLoadingRecipe(true);
       const fullRecipe = await recipesService.getRecipeById(recipe.id);
       const recipeData = fullRecipe.recipe;
       
       setSelectedRecipe(recipeData);
       
+      // Asegurar que haya al menos un ingrediente
+      const ingredients = recipeData.ingredients || [{ component_id: '', quantity: 1 }];
+      
       // Resetear completamente el formulario con los nuevos datos
-      const ingredients = recipeData.ingredients || [];
       const formData = {
-        code: recipeData.code,
-        name: recipeData.name,
+        code: recipeData.code || '',
+        name: recipeData.name || '',
         description: recipeData.description || '',
-        output_component_id: recipeData.output_component_id,
-        output_quantity: recipeData.output_quantity,
-        ingredients: ingredients.map(ing => ({
-          component_id: ing.component_id,
-          quantity: ing.quantity
-        }))
+        output_component_id: recipeData.output_component_id || '',
+        output_quantity: recipeData.output_quantity || 1,
+        ingredients: ingredients.length > 0 ? ingredients.map(ing => ({
+          component_id: ing.component_id || '',
+          quantity: ing.quantity || 1
+        })) : [{ component_id: '', quantity: 1 }]
       };
       
+      // Resetear el formulario
       reset(formData);
       
       setViewMode(false);
@@ -272,6 +282,8 @@ export default function Recipes() {
     } catch (error) {
       console.error('Error al cargar receta:', error);
       alert('Error al cargar la receta para edición');
+    } finally {
+      setLoadingRecipe(false);
     }
   };
 
@@ -282,12 +294,9 @@ export default function Recipes() {
   };
 
   const onSubmit = (data: RecipeFormData) => {
-    console.log('Form submitted with data:', data);
     if (selectedRecipe && !viewMode) {
-      console.log('Updating recipe:', selectedRecipe.id);
       updateMutation.mutate({ id: selectedRecipe.id, data });
     } else if (!viewMode) {
-      console.log('Creating new recipe');
       createMutation.mutate(data);
     }
   };
@@ -316,14 +325,6 @@ export default function Recipes() {
     }
   };
 
-  // Log para debug cuando se abra el diálogo
-  React.useEffect(() => {
-    if (openDialog && selectedRecipe && !viewMode) {
-      console.log('Receta seleccionada para edición:', selectedRecipe);
-      console.log('Ingredientes del formulario (fields):', fields);
-      console.log('Ingredientes de la receta:', selectedRecipe.ingredients);
-    }
-  }, [openDialog, selectedRecipe, viewMode, fields]);
 
 
   return (
@@ -335,7 +336,6 @@ export default function Recipes() {
             variant="contained"
             startIcon={<Add />}
             onClick={() => {
-              console.log('Opening dialog for new recipe');
               setSelectedRecipe(null);
               setViewMode(false);
               reset({
@@ -486,6 +486,17 @@ export default function Recipes() {
             </DialogContent>
             <DialogActions>
               <Button onClick={handleCloseDialog}>Cerrar</Button>
+              {isAdmin && (
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    setViewMode(false);
+                  }}
+                  startIcon={<Edit />}
+                >
+                  Editar
+                </Button>
+              )}
             </DialogActions>
           </>
         ) : (

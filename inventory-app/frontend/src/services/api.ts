@@ -1,12 +1,14 @@
 import axios from 'axios';
+import config from '../config';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3014/api';
+const API_BASE_URL = config.API_URL;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000,
 });
 
 api.interceptors.request.use(

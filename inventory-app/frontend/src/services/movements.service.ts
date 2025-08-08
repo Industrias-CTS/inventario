@@ -103,7 +103,6 @@ export const movementsService = {
       const response = await api.post('/movements/invoice', data);
       return response.data;
     } catch (error) {
-      console.log('Servidor principal falló, intentando con servidor alternativo...');
       // Usar servidor alternativo en puerto 3004
       const alternativeResponse = await fetch('http://localhost:3004/api/movements/invoice', {
         method: 'POST',

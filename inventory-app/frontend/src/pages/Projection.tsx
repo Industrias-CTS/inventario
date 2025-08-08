@@ -31,11 +31,14 @@ import {
   Warning as WarningIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
+  Folder as FolderIcon,
+  Visibility as VisibilityIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesService, Recipe } from '../services/recipes.service';
 import { componentsService, Component } from '../services/components.service';
-import { projectionsService } from '../services/projections.service';
+import { projectionsService, Projection } from '../services/projections.service';
 
 interface RecipeProjection {
   recipe: Recipe;
@@ -50,7 +53,7 @@ interface ComponentRequirement {
   isAvailable: boolean;
 }
 
-export const Projection: React.FC = () => {
+export default function Projection() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [components, setComponents] = useState<Component[]>([]);
   const [selectedRecipes, setSelectedRecipes] = useState<RecipeProjection[]>([]);
@@ -58,8 +61,12 @@ export const Projection: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openSaveDialog, setOpenSaveDialog] = useState(false);
+  const [openViewDialog, setOpenViewDialog] = useState(false);
+  const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [projectionName, setProjectionName] = useState('');
   const [projectionDescription, setProjectionDescription] = useState('');
+  const [savedProjections, setSavedProjections] = useState<Projection[]>([]);
+  const [selectedProjection, setSelectedProjection] = useState<Projection | null>(null);
   const queryClient = useQueryClient();
 
   const saveProjectionMutation = useMutation({
@@ -70,10 +77,24 @@ export const Projection: React.FC = () => {
       setProjectionName('');
       setProjectionDescription('');
       alert('Proyección guardada exitosamente');
+      loadSavedProjections(); // Recargar la lista
     },
     onError: (error: any) => {
       console.error('Error al guardar proyección:', error);
       alert(`Error al guardar proyección: ${error.response?.data?.error || error.message}`);
+    },
+  });
+
+  const deleteProjectionMutation = useMutation({
+    mutationFn: projectionsService.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projections'] });
+      alert('Proyección eliminada exitosamente');
+      loadSavedProjections(); // Recargar la lista
+    },
+    onError: (error: any) => {
+      console.error('Error al eliminar proyección:', error);
+      alert(`Error al eliminar proyección: ${error.response?.data?.error || error.message}`);
     },
   });
 
@@ -94,6 +115,37 @@ export const Projection: React.FC = () => {
       setError('Error al cargar los datos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSavedProjections = async () => {
+    try {
+      const projections = await projectionsService.getAll();
+      setSavedProjections(projections);
+    } catch (err) {
+      console.error('Error al cargar proyecciones guardadas:', err);
+    }
+  };
+
+  const handleViewSavedProjections = () => {
+    loadSavedProjections();
+    setOpenViewDialog(true);
+  };
+
+  const handleViewProjectionDetail = async (projection: Projection) => {
+    try {
+      const fullProjection = await projectionsService.getById(projection.id);
+      setSelectedProjection(fullProjection);
+      setOpenDetailDialog(true);
+    } catch (err) {
+      console.error('Error al cargar detalles de proyección:', err);
+      alert('Error al cargar los detalles de la proyección');
+    }
+  };
+
+  const handleDeleteProjection = (projectionId: string) => {
+    if (window.confirm('¿Estás seguro de que quieres eliminar esta proyección?')) {
+      deleteProjectionMutation.mutate(projectionId);
     }
   };
 
@@ -210,9 +262,19 @@ export const Projection: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Proyección de Producción
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">
+          Proyección de Producción
+        </Typography>
+        <Button
+          variant="outlined"
+          startIcon={<FolderIcon />}
+          onClick={handleViewSavedProjections}
+          sx={{ ml: 2 }}
+        >
+          Ver Proyecciones Guardadas
+        </Button>
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -458,6 +520,235 @@ export const Projection: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Dialog para ver proyecciones guardadas */}
+      <Dialog open={openViewDialog} onClose={() => setOpenViewDialog(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>Proyecciones Guardadas</DialogTitle>
+        <DialogContent>
+          {savedProjections.length === 0 ? (
+            <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+              No hay proyecciones guardadas
+            </Typography>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Nombre</TableCell>
+                    <TableCell>Descripción</TableCell>
+                    <TableCell align="center">Recetas</TableCell>
+                    <TableCell align="center">Items</TableCell>
+                    <TableCell align="center">Estado</TableCell>
+                    <TableCell>Creado por</TableCell>
+                    <TableCell>Fecha</TableCell>
+                    <TableCell align="center">Acciones</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {savedProjections.map((projection) => (
+                    <TableRow key={projection.id}>
+                      <TableCell>
+                        <Typography variant="subtitle2" fontWeight="bold">
+                          {projection.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {projection.description || '-'}
+                      </TableCell>
+                      <TableCell align="center">{projection.total_recipes}</TableCell>
+                      <TableCell align="center">{projection.total_items}</TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          icon={projection.is_feasible ? <CheckCircleIcon /> : <WarningIcon />}
+                          label={projection.is_feasible ? 'Factible' : 'Con Faltantes'}
+                          color={projection.is_feasible ? 'success' : 'warning'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {projection.username || 
+                         `${projection.first_name || ''} ${projection.last_name || ''}`.trim() || 
+                         'Usuario desconocido'}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(projection.created_at).toLocaleDateString('es-ES')}
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleViewProjectionDetail(projection)}
+                            title="Ver detalles"
+                          >
+                            <VisibilityIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteProjection(projection.id)}
+                            title="Eliminar proyección"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenViewDialog(false)}>
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para ver detalles de proyección */}
+      <Dialog 
+        open={openDetailDialog} 
+        onClose={() => setOpenDetailDialog(false)} 
+        maxWidth="lg" 
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedProjection && (
+            <Box>
+              <Typography variant="h5" component="span">
+                {selectedProjection.name}
+              </Typography>
+              <Chip
+                icon={selectedProjection.is_feasible ? <CheckCircleIcon /> : <WarningIcon />}
+                label={selectedProjection.is_feasible ? 'Factible' : 'Con Faltantes'}
+                color={selectedProjection.is_feasible ? 'success' : 'warning'}
+                size="small"
+                sx={{ ml: 2 }}
+              />
+            </Box>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {selectedProjection && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                {selectedProjection.description && (
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    <strong>Descripción:</strong> {selectedProjection.description}
+                  </Typography>
+                )}
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Creado por: {selectedProjection.username || 
+                              `${selectedProjection.first_name || ''} ${selectedProjection.last_name || ''}`.trim() || 
+                              'Usuario desconocido'} el {new Date(selectedProjection.created_at).toLocaleDateString('es-ES')}
+                </Typography>
+              </Grid>
+
+              {/* Recetas de la proyección */}
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Recetas ({selectedProjection.recipes?.length || 0})
+                  </Typography>
+                  {selectedProjection.recipes && selectedProjection.recipes.length > 0 ? (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Código</TableCell>
+                            <TableCell>Nombre</TableCell>
+                            <TableCell align="right">Cantidad</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {selectedProjection.recipes.map((recipe) => (
+                            <TableRow key={recipe.id}>
+                              <TableCell>{recipe.recipe_code || '-'}</TableCell>
+                              <TableCell>{recipe.recipe_name || '-'}</TableCell>
+                              <TableCell align="right">{recipe.quantity}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  ) : (
+                    <Typography color="text.secondary">No hay recetas</Typography>
+                  )}
+                </Paper>
+              </Grid>
+
+              {/* Requerimientos de la proyección */}
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Requerimientos de Componentes
+                  </Typography>
+                  {selectedProjection.requirements && selectedProjection.requirements.length > 0 ? (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Componente</TableCell>
+                            <TableCell align="right">Requerido</TableCell>
+                            <TableCell align="right">Disponible</TableCell>
+                            <TableCell align="center">Estado</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {selectedProjection.requirements.map((req) => (
+                            <TableRow key={req.id}>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {req.component_name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {req.component_code}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                {req.required_quantity} {req.unit_symbol}
+                              </TableCell>
+                              <TableCell align="right">
+                                {req.available_quantity} {req.unit_symbol}
+                              </TableCell>
+                              <TableCell align="center">
+                                {req.is_available ? (
+                                  <Chip
+                                    icon={<CheckCircleIcon />}
+                                    label="OK"
+                                    color="success"
+                                    size="small"
+                                  />
+                                ) : (
+                                  <Chip
+                                    icon={<WarningIcon />}
+                                    label={`Falta ${req.shortage}`}
+                                    color="error"
+                                    size="small"
+                                  />
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  ) : (
+                    <Typography color="text.secondary">No hay requerimientos</Typography>
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDetailDialog(false)}>
+            Cerrar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
-};
+}

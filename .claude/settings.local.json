@@ -25,7 +25,9 @@
       "Bash(timeout 10 npm run dev)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(timeout 5 npm run dev)",
+      "Bash(set PORT=3000)"
     ],
     "deny": []
   }

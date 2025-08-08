@@ -43,7 +43,6 @@ import { format } from 'date-fns';
 import { movementsService } from '../services/movements.service';
 import { componentsService } from '../services/components.service';
 import { movementTypesService } from '../services/movement-types.service';
-// import { Movement, Reservation } from '../types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -105,27 +104,41 @@ export default function Movements() {
 
   const createMovementMutation = useMutation({
     mutationFn: movementsService.createMovement,
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['movements'] });
       queryClient.invalidateQueries({ queryKey: ['components'] });
       setOpenMovementDialog(false);
       resetMovement();
+      
+      // Mostrar mensaje de éxito
+      alert(`Movimiento creado exitosamente. ${response?.message || ''}`);
+    },
+    onError: (error: any) => {
+      console.error('Error al crear movimiento:', error);
+      alert(`Error al crear movimiento: ${error.response?.data?.error || error.message}`);
     },
   });
 
   const createReservationMutation = useMutation({
     mutationFn: movementsService.createReservation,
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
       queryClient.invalidateQueries({ queryKey: ['components'] });
       setOpenReservationDialog(false);
       resetReservation();
+      
+      // Mostrar mensaje de éxito
+      alert(`Reserva creada exitosamente. ${response?.message || ''}`);
+    },
+    onError: (error: any) => {
+      console.error('Error al crear reserva:', error);
+      alert(`Error al crear reserva: ${error.response?.data?.error || error.message}`);
     },
   });
 
   const createInvoiceMutation = useMutation({
     mutationFn: movementsService.createInvoice,
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['movements'] });
       queryClient.invalidateQueries({ queryKey: ['components'] });
       setOpenInvoiceDialog(false);
@@ -133,6 +146,13 @@ export default function Movements() {
       setInvoiceItems([]);
       setSelectedComponent(null);
       setIsNewComponent(false);
+      
+      // Mostrar mensaje de éxito
+      alert(`Factura procesada exitosamente. ${response?.message || 'Movimientos de inventario actualizados.'}`);
+    },
+    onError: (error: any) => {
+      console.error('Error al procesar factura:', error);
+      alert(`Error al procesar factura: ${error.response?.data?.error || error.message}`);
     },
   });
 
@@ -214,8 +234,13 @@ export default function Movements() {
       field: 'user',
       headerName: 'Usuario',
       width: 150,
-      valueGetter: (params) =>
-        params.row.username || `${params.row.first_name} ${params.row.last_name}`,
+      valueGetter: (params) => {
+        if (params.row.username) return params.row.username;
+        if (params.row.first_name || params.row.last_name) {
+          return `${params.row.first_name || ''} ${params.row.last_name || ''}`.trim();
+        }
+        return 'Usuario desconocido';
+      },
     },
   ];
 
@@ -260,8 +285,13 @@ export default function Movements() {
       field: 'user',
       headerName: 'Reservado por',
       width: 150,
-      valueGetter: (params) =>
-        params.row.username || `${params.row.first_name} ${params.row.last_name}`,
+      valueGetter: (params) => {
+        if (params.row.username) return params.row.username;
+        if (params.row.first_name || params.row.last_name) {
+          return `${params.row.first_name || ''} ${params.row.last_name || ''}`.trim();
+        }
+        return 'Usuario desconocido';
+      },
     },
   ];
 
