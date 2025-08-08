@@ -1,23 +1,44 @@
 import { Request, Response } from 'express';
-import { db } from '@/config/database';
-import { hashPassword, comparePassword } from '@/utils/password';
-import { generateToken } from '@/utils/jwt';
+import { db } from '../config/database.config';
+import { hashPassword, comparePassword } from '../utils/password';
+import { generateToken } from '../utils/jwt';
+
+const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const register = async (req: Request, res: Response) => {
   try {
     const { username, email, password, first_name, last_name, role = 'user' } = req.body;
 
+    const existingUser = await db.get(
+      'SELECT id FROM users WHERE username = ? OR email = ?',
+      [username, email]
+    );
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'El usuario o email ya existe' });
+    }
+
     const hashedPassword = await hashPassword(password);
+    const userId = generateId();
+    const now = new Date().toISOString();
 
     const query = `
-      INSERT INTO users (username, email, password, first_name, last_name, role)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, username, email, first_name, last_name, role, is_active, created_at
+      INSERT INTO users (
+        id, username, email, password, first_name, last_name, 
+        role, is_active, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     `;
 
-    const values = [username, email, hashedPassword, first_name, last_name, role];
-    const result = await db.query(query, values);
-    const user = result.rows[0];
+    await db.run(query, [
+      userId, username, email, hashedPassword, 
+      first_name, last_name, role, now, now
+    ]);
+
+    const user = await db.get(
+      'SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users WHERE id = ?',
+      [userId]
+    );
 
     const token = generateToken({
       userId: user.id,
@@ -32,9 +53,6 @@ export const register = async (req: Request, res: Response) => {
       token,
     });
   } catch (error: any) {
-    if (error.code === '23505') {
-      return res.status(400).json({ error: 'El usuario o email ya existe' });
-    }
     console.error('Error en registro:', error);
     res.status(500).json({ error: 'Error al registrar usuario' });
   }
@@ -44,19 +62,16 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
 
-    const query = `
-      SELECT id, username, email, password, first_name, last_name, role, is_active
-      FROM users
-      WHERE username = $1 OR email = $1
-    `;
-
-    const result = await db.query(query, [username]);
+    const user = await db.get(
+      `SELECT id, username, email, password, first_name, last_name, role, is_active
+       FROM users
+       WHERE username = ? OR email = ?`,
+      [username, username]
+    );
     
-    if (result.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
-
-    const user = result.rows[0];
 
     if (!user.is_active) {
       return res.status(401).json({ error: 'Usuario inactivo' });
@@ -92,21 +107,93 @@ export const getProfile = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
 
-    const query = `
-      SELECT id, username, email, first_name, last_name, role, is_active, created_at, updated_at
-      FROM users
-      WHERE id = $1
-    `;
+    const user = await db.get(
+      `SELECT id, username, email, first_name, last_name, role, is_active, created_at, updated_at
+       FROM users
+       WHERE id = ?`,
+      [userId]
+    );
 
-    const result = await db.query(query, [userId]);
-
-    if (result.rows.length === 0) {
+    if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    res.json({ user: result.rows[0] });
+    res.json({ user });
   } catch (error) {
     console.error('Error al obtener perfil:', error);
     res.status(500).json({ error: 'Error al obtener perfil' });
+  }
+};
+
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { first_name, last_name, email } = req.body;
+
+    const existingEmail = await db.get(
+      'SELECT id FROM users WHERE email = ? AND id != ?',
+      [email, userId]
+    );
+
+    if (existingEmail) {
+      return res.status(400).json({ error: 'El email ya está en uso' });
+    }
+
+    const now = new Date().toISOString();
+
+    await db.run(
+      `UPDATE users 
+       SET first_name = ?, last_name = ?, email = ?, updated_at = ?
+       WHERE id = ?`,
+      [first_name, last_name, email, now, userId]
+    );
+
+    const user = await db.get(
+      'SELECT id, username, email, first_name, last_name, role, is_active, created_at, updated_at FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({
+      message: 'Perfil actualizado exitosamente',
+      user
+    });
+  } catch (error) {
+    console.error('Error al actualizar perfil:', error);
+    res.status(500).json({ error: 'Error al actualizar perfil' });
+  }
+};
+
+export const changePassword = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await db.get(
+      'SELECT password FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const isValidPassword = await comparePassword(currentPassword, user.password);
+    
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+    const now = new Date().toISOString();
+
+    await db.run(
+      'UPDATE users SET password = ?, updated_at = ? WHERE id = ?',
+      [hashedPassword, now, userId]
+    );
+
+    res.json({ message: 'Contraseña actualizada exitosamente' });
+  } catch (error) {
+    console.error('Error al cambiar contraseña:', error);
+    res.status(500).json({ error: 'Error al cambiar contraseña' });
   }
 };
