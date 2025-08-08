@@ -70,31 +70,16 @@ async function startServer() {
     const componentsRoutes = require('./routes/components.routes').default;
     const movementsRoutes = require('./routes/movements.routes').default;
     const recipesRoutes = require('./routes/recipes.routes').default;
+    const categoriesRoutes = require('./routes/categories.routes').default;
+    const unitsRoutes = require('./routes/units.routes').default;
 
     app.use('/api/auth', authRoutes);
     app.use('/api/components', componentsRoutes);
     app.use('/api/movements', movementsRoutes);
     app.use('/api/recipes', recipesRoutes);
+    app.use('/api/categories', categoriesRoutes);
+    app.use('/api/units', unitsRoutes);
 
-    app.get('/api/categories', async (_req, res) => {
-      try {
-        const categories = await db.query('SELECT * FROM categories ORDER BY name');
-        res.json({ categories });
-      } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Error al obtener categorías' });
-      }
-    });
-
-    app.get('/api/units', async (_req, res) => {
-      try {
-        const units = await db.query('SELECT * FROM units ORDER BY name');
-        res.json({ units });
-      } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Error al obtener unidades' });
-      }
-    });
 
     app.get('/api/movement-types', async (_req, res) => {
       try {
