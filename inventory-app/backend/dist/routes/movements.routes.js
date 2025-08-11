@@ -8,7 +8,7 @@ const validation_1 = require("../middlewares/validation");
 const router = (0, express_1.Router)();
 router.get('/', auth_1.authenticate, movements_controller_1.getMovements);
 router.post('/', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
-    (0, express_validator_1.body)('type').notEmpty().withMessage('Tipo de movimiento es requerido').isIn(['entrada', 'salida', 'reserva', 'liberacion']).withMessage('Tipo de movimiento no válido'),
+    (0, express_validator_1.body)('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
     (0, express_validator_1.body)('component_id').notEmpty().withMessage('ID de componente es requerido'),
     (0, express_validator_1.body)('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
 ], validation_1.validateRequest, movements_controller_1.createMovement);

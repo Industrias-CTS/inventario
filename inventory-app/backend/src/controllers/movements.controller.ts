@@ -61,7 +61,7 @@ export const getMovements = async (req: Request, res: Response) => {
 export const createMovement = async (req: Request, res: Response) => {
   try {
     const {
-      type,
+      movement_type_id,
       component_id,
       quantity,
       unit_cost = 0,
@@ -71,23 +71,13 @@ export const createMovement = async (req: Request, res: Response) => {
 
     const userId = req.user?.userId;
 
-    // Mapear el tipo a operación
-    let operation: string;
-    switch (type) {
-      case 'entrada':
-        operation = 'IN';
-        break;
-      case 'salida':
-        operation = 'OUT';
-        break;
-      case 'reserva':
-        operation = 'RESERVE';
-        break;
-      case 'liberacion':
-        operation = 'RELEASE';
-        break;
-      default:
-        return res.status(400).json({ error: 'Tipo de movimiento no válido' });
+    const movementType = await db.get(
+      'SELECT * FROM movement_types WHERE id = ?',
+      [movement_type_id]
+    );
+
+    if (!movementType) {
+      return res.status(400).json({ error: 'Tipo de movimiento no válido' });
     }
 
     const component = await db.get(
@@ -104,10 +94,10 @@ export const createMovement = async (req: Request, res: Response) => {
       let newReservedStock = component.reserved_stock || 0;
       let newCostPrice = component.cost_price || 0;
 
-      switch (operation) {
+      switch (movementType.operation) {
         case 'IN':
           newStock += Number(quantity);
-          // Actualizar el precio del componente si el nuevo precio es mayor
+          // NUEVA FUNCIONALIDAD: Actualizar el precio del componente si el nuevo precio es mayor
           if (unit_cost > newCostPrice) {
             newCostPrice = unit_cost;
           }
@@ -142,20 +132,23 @@ export const createMovement = async (req: Request, res: Response) => {
 
       await db.run(
         `INSERT INTO movements (
-          id, type, component_id, quantity, 
-          unit_cost, total_cost, reference, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, movement_type_id, component_id, quantity, 
+          unit_cost, reference_number, notes, user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          movementId, type, component_id, quantity,
-          unit_cost, quantity * unit_cost, reference_number, notes, userId, now
+          movementId, movement_type_id, component_id, quantity,
+          unit_cost, reference_number, notes, userId, now
         ]
       );
 
       const newMovement = await db.get(
         `SELECT 
           m.*,
+          mt.name as movement_type_name,
+          mt.operation,
           c.name as component_name
         FROM movements m
+        JOIN movement_types mt ON m.movement_type_id = mt.id
         JOIN components c ON m.component_id = c.id
         WHERE m.id = ?`,
         [movementId]
@@ -464,7 +457,7 @@ export const createInvoice = async (req: Request, res: Response) => {
         switch (movementType.operation) {
           case 'IN':
             newStock += quantity;
-            // Actualizar el precio del componente si el nuevo precio es mayor
+            // NUEVA FUNCIONALIDAD: Actualizar el precio del componente si el nuevo precio es mayor
             if (itemUnitCost > newCostPrice) {
               newCostPrice = itemUnitCost;
             }
@@ -495,40 +488,19 @@ export const createInvoice = async (req: Request, res: Response) => {
         }
 
         const movementId = generateId();
-        
-        // Map movement type to valid table type values
-        let tableType = 'salida'; // Default to 'salida' (out)
-        switch (movementType.operation) {
-          case 'IN':
-            tableType = 'entrada';
-            break;
-          case 'OUT':
-            tableType = 'salida';
-            break;
-          case 'RESERVE':
-            tableType = 'reserva';
-            break;
-          case 'RELEASE':
-            tableType = 'liberacion';
-            break;
-          default:
-            tableType = 'ajuste';
-            break;
-        }
 
         // Insert movement using the correct table structure
         await db.run(
           `INSERT INTO movements (
-            id, type, component_id, quantity,
-            unit_cost, total_cost, reference, notes, user_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, movement_type_id, component_id, quantity,
+            unit_cost, reference_number, notes, user_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             movementId, 
-            tableType, // Use mapped type value
+            movement_type_id,
             component.id, 
             item.quantity,
             item.unit_cost || 0,
-            item.total_cost || (item.quantity * (item.unit_cost || 0)),
             reference_number, 
             notes || `Factura ${reference_number}`, 
             userId, 

@@ -19,7 +19,7 @@ router.post(
   authenticate,
   authorize('admin', 'user'),
   [
-    body('type').notEmpty().withMessage('Tipo de movimiento es requerido').isIn(['entrada', 'salida', 'reserva', 'liberacion']).withMessage('Tipo de movimiento no válido'),
+    body('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
     body('component_id').notEmpty().withMessage('ID de componente es requerido'),
     body('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
   ],
