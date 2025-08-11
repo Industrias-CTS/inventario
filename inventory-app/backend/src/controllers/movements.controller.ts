@@ -487,7 +487,8 @@ export const createInvoice = async (req: Request, res: Response) => {
         let newStock = component.current_stock;
         let newCostPrice = component.cost_price || 0;
         const quantity = Number(item.quantity);
-        const baseUnitCost = Number(item.unit_cost || 0);
+        // Usar el cost_price actual del componente como base, no el unit_cost del item
+        const baseUnitCost = Number(component.cost_price || 0);
         // NUEVA FUNCIONALIDAD: Agregar costo de envío e impuestos al unit_cost
         const itemUnitCost = baseUnitCost + costPerUnit;
 
