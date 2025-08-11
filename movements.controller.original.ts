@@ -3,16 +3,6 @@ import { db } from '../config/database.config';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-// Mapeo de tipos a operaciones para compatibilidad
-const TYPE_TO_OPERATION: { [key: string]: string } = {
-  'entrada': 'IN',
-  'salida': 'OUT', 
-  'reserva': 'RESERVE',
-  'liberacion': 'RELEASE',
-  'ajuste': 'IN', // Por defecto ajuste como entrada
-  'transferencia': 'IN' // Por defecto transferencia como entrada
-};
-
 export const getMovements = async (req: Request, res: Response) => {
   try {
     const { component_id, movement_type_id, start_date, end_date, limit = 100 } = req.query;
@@ -20,14 +10,16 @@ export const getMovements = async (req: Request, res: Response) => {
     let query = `
       SELECT 
         m.*,
-        m.type as movement_type_code,
-        m.type as movement_type_name,
+        mt.code as movement_type_code,
+        mt.name as movement_type_name,
+        mt.operation,
         c.code as component_code,
         c.name as component_name,
         u.username,
         u.first_name,
         u.last_name
       FROM movements m
+      JOIN movement_types mt ON m.movement_type_id = mt.id
       JOIN components c ON m.component_id = c.id
       LEFT JOIN users u ON m.user_id = u.id
       WHERE 1=1
@@ -41,16 +33,8 @@ export const getMovements = async (req: Request, res: Response) => {
     }
 
     if (movement_type_id) {
-      // Convertir movement_type_id a type para compatibilidad con frontend
-      let typeValue = movement_type_id;
-      if (typeof movement_type_id === 'string') {
-        if (movement_type_id.includes('entrada') || movement_type_id === 'entrada001') typeValue = 'entrada';
-        else if (movement_type_id.includes('salida') || movement_type_id === 'salida001') typeValue = 'salida';
-        else if (movement_type_id.includes('reserva') || movement_type_id === 'reserva001') typeValue = 'reserva';
-        else if (movement_type_id.includes('liberacion') || movement_type_id === 'libera001') typeValue = 'liberacion';
-      }
-      query += ` AND m.type = ?`;
-      values.push(typeValue);
+      query += ` AND m.movement_type_id = ?`;
+      values.push(movement_type_id);
     }
 
     if (start_date) {
@@ -78,7 +62,6 @@ export const createMovement = async (req: Request, res: Response) => {
   try {
     const {
       movement_type_id,
-      type: requestType,
       component_id,
       quantity,
       unit_cost = 0,
@@ -88,17 +71,12 @@ export const createMovement = async (req: Request, res: Response) => {
 
     const userId = req.user?.userId;
 
-    // Determinar el tipo basado en movement_type_id o type
-    let movementType = requestType;
-    if (movement_type_id && !requestType) {
-      if (movement_type_id.includes('entrada') || movement_type_id === 'entrada001') movementType = 'entrada';
-      else if (movement_type_id.includes('salida') || movement_type_id === 'salida001') movementType = 'salida';
-      else if (movement_type_id.includes('reserva') || movement_type_id === 'reserva001') movementType = 'reserva';
-      else if (movement_type_id.includes('liberacion') || movement_type_id === 'libera001') movementType = 'liberacion';
-      else movementType = 'entrada'; // Default
-    }
+    const movementType = await db.get(
+      'SELECT * FROM movement_types WHERE id = ?',
+      [movement_type_id]
+    );
 
-    if (!movementType || !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(movementType)) {
+    if (!movementType) {
       return res.status(400).json({ error: 'Tipo de movimiento no válido' });
     }
 
@@ -111,20 +89,13 @@ export const createMovement = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Componente no encontrado' });
     }
 
-    const operation = TYPE_TO_OPERATION[movementType] || 'IN';
-
     await db.transaction(async () => {
       let newStock = component.current_stock;
       let newReservedStock = component.reserved_stock || 0;
-      let newCostPrice = component.cost_price || 0;
 
-      switch (operation) {
+      switch (movementType.operation) {
         case 'IN':
           newStock += Number(quantity);
-          // NUEVA FUNCIONALIDAD: Actualizar el precio del componente si el nuevo precio es mayor
-          if (unit_cost > newCostPrice) {
-            newCostPrice = unit_cost;
-          }
           break;
         case 'OUT':
           if (component.current_stock < quantity) {
@@ -147,8 +118,8 @@ export const createMovement = async (req: Request, res: Response) => {
       }
 
       await db.run(
-        'UPDATE components SET current_stock = ?, reserved_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?',
-        [newStock, newReservedStock, newCostPrice, new Date().toISOString(), component_id]
+        'UPDATE components SET current_stock = ?, reserved_stock = ?, updated_at = ? WHERE id = ?',
+        [newStock, newReservedStock, new Date().toISOString(), component_id]
       );
 
       const movementId = generateId();
@@ -156,21 +127,23 @@ export const createMovement = async (req: Request, res: Response) => {
 
       await db.run(
         `INSERT INTO movements (
-          id, type, component_id, quantity, 
-          unit_cost, total_cost, reference, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, movement_type_id, component_id, quantity, 
+          unit_cost, reference_number, notes, user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          movementId, movementType, component_id, quantity,
-          unit_cost, quantity * unit_cost, reference_number, notes, userId, now
+          movementId, movement_type_id, component_id, quantity,
+          unit_cost, reference_number, notes, userId, now
         ]
       );
 
       const newMovement = await db.get(
         `SELECT 
           m.*,
-          m.type as movement_type_name,
+          mt.name as movement_type_name,
+          mt.operation,
           c.name as component_name
         FROM movements m
+        JOIN movement_types mt ON m.movement_type_id = mt.id
         JOIN components c ON m.component_id = c.id
         WHERE m.id = ?`,
         [movementId]
@@ -178,10 +151,7 @@ export const createMovement = async (req: Request, res: Response) => {
 
       res.status(201).json({
         message: 'Movimiento registrado exitosamente',
-        movement: {
-          ...newMovement,
-          operation // Agregar operation para compatibilidad
-        },
+        movement: newMovement,
         newStock,
         newReservedStock
       });
@@ -199,14 +169,16 @@ export const getMovementById = async (req: Request, res: Response) => {
     const movement = await db.get(
       `SELECT 
         m.*,
-        m.type as movement_type_code,
-        m.type as movement_type_name,
+        mt.code as movement_type_code,
+        mt.name as movement_type_name,
+        mt.operation,
         c.code as component_code,
         c.name as component_name,
         u.username,
         u.first_name,
         u.last_name
       FROM movements m
+      JOIN movement_types mt ON m.movement_type_id = mt.id
       JOIN components c ON m.component_id = c.id
       LEFT JOIN users u ON m.user_id = u.id
       WHERE m.id = ?`,
@@ -217,12 +189,7 @@ export const getMovementById = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Movimiento no encontrado' });
     }
 
-    res.json({ 
-      movement: {
-        ...movement,
-        operation: TYPE_TO_OPERATION[movement.type] || 'IN'
-      }
-    });
+    res.json({ movement });
   } catch (error) {
     console.error('Error al obtener movimiento:', error);
     res.status(500).json({ error: 'Error al obtener movimiento' });
@@ -233,7 +200,7 @@ export const getMovementStats = async (req: Request, res: Response) => {
   try {
     const { component_id, start_date, end_date } = req.query;
 
-    let baseQuery = 'FROM movements m WHERE 1=1';
+    let baseQuery = 'FROM movements m JOIN movement_types mt ON m.movement_type_id = mt.id WHERE 1=1';
     const values: any[] = [];
 
     if (component_id) {
@@ -254,10 +221,10 @@ export const getMovementStats = async (req: Request, res: Response) => {
     const stats = await db.get(`
       SELECT 
         COUNT(*) as total_movements,
-        SUM(CASE WHEN m.type IN ('entrada', 'ajuste', 'transferencia') THEN m.quantity ELSE 0 END) as total_in,
-        SUM(CASE WHEN m.type = 'salida' THEN m.quantity ELSE 0 END) as total_out,
-        SUM(CASE WHEN m.type = 'reserva' THEN m.quantity ELSE 0 END) as total_reserved,
-        SUM(CASE WHEN m.type = 'liberacion' THEN m.quantity ELSE 0 END) as total_released,
+        SUM(CASE WHEN mt.operation = 'IN' THEN m.quantity ELSE 0 END) as total_in,
+        SUM(CASE WHEN mt.operation = 'OUT' THEN m.quantity ELSE 0 END) as total_out,
+        SUM(CASE WHEN mt.operation = 'RESERVE' THEN m.quantity ELSE 0 END) as total_reserved,
+        SUM(CASE WHEN mt.operation = 'RELEASE' THEN m.quantity ELSE 0 END) as total_released,
         SUM(m.quantity * m.unit_cost) as total_cost
       ${baseQuery}
     `, values);
@@ -275,7 +242,10 @@ export const cancelMovement = async (req: Request, res: Response) => {
     const { reason } = req.body;
 
     const movement = await db.get(
-      'SELECT * FROM movements WHERE id = ?',
+      `SELECT m.*, mt.operation 
+       FROM movements m 
+       JOIN movement_types mt ON m.movement_type_id = mt.id 
+       WHERE m.id = ?`,
       [id]
     );
 
@@ -288,13 +258,11 @@ export const cancelMovement = async (req: Request, res: Response) => {
       [movement.component_id]
     );
 
-    const operation = TYPE_TO_OPERATION[movement.type] || 'IN';
-
     await db.transaction(async () => {
       let newStock = component.current_stock;
       let newReservedStock = component.reserved_stock || 0;
 
-      switch (operation) {
+      switch (movement.operation) {
         case 'IN':
           newStock -= movement.quantity;
           break;
@@ -319,16 +287,15 @@ export const cancelMovement = async (req: Request, res: Response) => {
 
       await db.run(
         `INSERT INTO movements (
-          id, type, component_id, quantity, 
-          unit_cost, total_cost, reference, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, movement_type_id, component_id, quantity, 
+          unit_cost, reference_number, notes, user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           cancelMovementId, 
-          movement.type, 
+          movement.movement_type_id, 
           movement.component_id,
           -movement.quantity,
           movement.unit_cost,
-          -movement.total_cost,
           `CANCEL-${movement.id}`,
           `Cancelación de movimiento ${movement.id}: ${reason}`,
           req.user?.userId,
@@ -379,14 +346,17 @@ export const createReservation = async (req: Request, res: Response) => {
       const reservationId = generateId();
       const now = new Date().toISOString();
 
+      // Usar un tipo de movimiento de reserva
+      const reserveMovementTypeId = 'rsrv001';
+
       await db.run(
         `INSERT INTO movements (
-          id, type, component_id, quantity,
-          unit_cost, total_cost, reference, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, movement_type_id, component_id, quantity,
+          reference_number, notes, user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          reservationId, 'reserva', component_id, quantity,
-          0, 0, `RESERVE-${reservationId}`, notes || 'Reserva de stock', userId, now
+          reservationId, reserveMovementTypeId, component_id, quantity,
+          `RESERVE-${reservationId}`, notes || 'Reserva de stock', userId, now
         ]
       );
 
@@ -439,26 +409,12 @@ export const getReservations = async (req: Request, res: Response) => {
 
 export const createInvoice = async (req: Request, res: Response) => {
   try {
-    const { movement_type_id, type: requestType, reference_number, items, shipping_cost = 0, shipping_tax = 0, notes } = req.body;
+    const { movement_type_id, reference_number, items, shipping_cost = 0, shipping_tax = 0, notes } = req.body;
     const userId = req.user?.userId;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'La factura debe tener al menos un item' });
     }
-
-    // Determinar el tipo basado en movement_type_id o type
-    let movementType = requestType;
-    if (movement_type_id && !requestType) {
-      if (movement_type_id.includes('entrada') || movement_type_id === 'entrada001') movementType = 'entrada';
-      else if (movement_type_id.includes('salida') || movement_type_id === 'salida001') movementType = 'salida';
-      else movementType = 'entrada'; // Default
-    }
-
-    if (!movementType) {
-      movementType = 'entrada'; // Default
-    }
-
-    const operation = TYPE_TO_OPERATION[movementType] || 'IN';
 
     await db.transaction(async () => {
       const invoiceId = generateId();
@@ -466,12 +422,6 @@ export const createInvoice = async (req: Request, res: Response) => {
       const movements = [];
 
       let totalInvoiceAmount = 0;
-      
-      // Calcular costo adicional por unidad (envío + impuestos distribuido entre todas las unidades)
-      const additionalCost = Number(shipping_cost) + Number(shipping_tax);
-      // Calcular cantidad total de todas las unidades
-      const totalQuantity = items.reduce((sum: number, item: any) => sum + Number(item.quantity), 0);
-      const costPerUnit = totalQuantity > 0 ? additionalCost / totalQuantity : 0;
 
       for (const item of items) {
         const component = await db.get(
@@ -483,21 +433,23 @@ export const createInvoice = async (req: Request, res: Response) => {
           throw new Error(`Componente con código ${item.component_code} no encontrado`);
         }
 
+        // Get movement type to determine if we need to update stock
+        const movementType = await db.get(
+          'SELECT * FROM movement_types WHERE id = ?',
+          [movement_type_id]
+        );
+
+        if (!movementType) {
+          throw new Error('Tipo de movimiento no válido');
+        }
+
         // Update component stock based on movement type
         let newStock = component.current_stock;
-        let newCostPrice = component.cost_price || 0;
         const quantity = Number(item.quantity);
-        const baseUnitCost = Number(item.unit_cost || 0);
-        // NUEVA FUNCIONALIDAD: Agregar costo de envío e impuestos al unit_cost
-        const itemUnitCost = baseUnitCost + costPerUnit;
 
-        switch (operation) {
+        switch (movementType.operation) {
           case 'IN':
             newStock += quantity;
-            // NUEVA FUNCIONALIDAD: Actualizar el precio del componente si el nuevo precio es mayor
-            if (itemUnitCost > newCostPrice) {
-              newCostPrice = itemUnitCost;
-            }
             break;
           case 'OUT':
             if (component.current_stock < quantity) {
@@ -516,16 +468,37 @@ export const createInvoice = async (req: Request, res: Response) => {
             break;
         }
 
-        // Update stock and price if it's IN or OUT operation
-        if (operation === 'IN' || operation === 'OUT') {
+        // Update stock if it's IN or OUT operation
+        if (movementType.operation === 'IN' || movementType.operation === 'OUT') {
           await db.run(
-            'UPDATE components SET current_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?',
-            [newStock, newCostPrice, now, component.id]
+            'UPDATE components SET current_stock = ?, updated_at = ? WHERE id = ?',
+            [newStock, now, component.id]
           );
         }
 
         const movementId = generateId();
+        
+        // Map movement type to valid table type values
+        let tableType = 'salida'; // Default to 'salida' (out)
+        switch (movementType.operation) {
+          case 'IN':
+            tableType = 'entrada';
+            break;
+          case 'OUT':
+            tableType = 'salida';
+            break;
+          case 'RESERVE':
+            tableType = 'reserva';
+            break;
+          case 'RELEASE':
+            tableType = 'liberacion';
+            break;
+          default:
+            tableType = 'ajuste';
+            break;
+        }
 
+        // Insert movement using the correct table structure
         await db.run(
           `INSERT INTO movements (
             id, type, component_id, quantity,
@@ -533,11 +506,11 @@ export const createInvoice = async (req: Request, res: Response) => {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             movementId, 
-            movementType,
+            tableType, // Use mapped type value
             component.id, 
             item.quantity,
-            itemUnitCost, // Usar el unit_cost que incluye costos adicionales
-            item.quantity * itemUnitCost, // SIEMPRE calcular con el unit_cost que incluye costos adicionales
+            item.unit_cost || 0,
+            item.total_cost || (item.quantity * (item.unit_cost || 0)),
             reference_number, 
             notes || `Factura ${reference_number}`, 
             userId, 
@@ -550,18 +523,15 @@ export const createInvoice = async (req: Request, res: Response) => {
           component_code: item.component_code,
           component_name: item.component_name,
           quantity: item.quantity,
-          unit_cost: itemUnitCost, // Mostrar el unit_cost que incluye costos adicionales
-          base_unit_cost: baseUnitCost, // Mostrar también el costo base original
-          additional_cost_per_unit: costPerUnit, // Mostrar cuánto se agregó por costos de envío/impuestos por unidad
-          total_additional_cost: costPerUnit * quantity, // Mostrar el costo adicional total para este item
-          total_cost: item.quantity * itemUnitCost, // Mostrar el total_cost que incluye costos adicionales
+          unit_cost: item.unit_cost || 0,
+          total_cost: item.total_cost,
           new_stock: newStock
         });
 
-        totalInvoiceAmount += (item.quantity * itemUnitCost); // Sumar el total_cost que incluye costos adicionales
+        totalInvoiceAmount += Number(item.total_cost);
       }
 
-      const finalAmount = totalInvoiceAmount; // Ya incluye los costos de envío distribuidos
+      const finalAmount = totalInvoiceAmount + Number(shipping_cost) + Number(shipping_tax);
 
       res.status(201).json({
         message: 'Factura creada exitosamente',

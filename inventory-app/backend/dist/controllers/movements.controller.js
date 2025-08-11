@@ -433,7 +433,7 @@ const createInvoice = async (req, res) => {
                     component.id,
                     item.quantity,
                     itemUnitCost, // Usar el unit_cost que incluye costos adicionales
-                    item.total_cost || (item.quantity * itemUnitCost),
+                    item.quantity * itemUnitCost, // SIEMPRE calcular con el unit_cost que incluye costos adicionales
                     reference_number,
                     notes || `Factura ${reference_number}`,
                     userId,
@@ -448,12 +448,12 @@ const createInvoice = async (req, res) => {
                     base_unit_cost: baseUnitCost, // Mostrar también el costo base original
                     additional_cost_per_unit: costPerUnit, // Mostrar cuánto se agregó por costos de envío/impuestos por unidad
                     total_additional_cost: costPerUnit * quantity, // Mostrar el costo adicional total para este item
-                    total_cost: item.total_cost,
+                    total_cost: item.quantity * itemUnitCost, // Mostrar el total_cost que incluye costos adicionales
                     new_stock: newStock
                 });
-                totalInvoiceAmount += Number(item.total_cost);
+                totalInvoiceAmount += (item.quantity * itemUnitCost); // Sumar el total_cost que incluye costos adicionales
             }
-            const finalAmount = totalInvoiceAmount + Number(shipping_cost) + Number(shipping_tax);
+            const finalAmount = totalInvoiceAmount; // Ya incluye los costos de envío distribuidos
             res.status(201).json({
                 message: 'Factura creada exitosamente',
                 invoice_id: invoiceId,
