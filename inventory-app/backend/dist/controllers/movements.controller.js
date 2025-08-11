@@ -381,9 +381,11 @@ const createInvoice = async (req, res) => {
             const now = new Date().toISOString();
             const movements = [];
             let totalInvoiceAmount = 0;
-            // Calcular costo adicional por item (envío + impuestos distribuido entre todos los items)
+            // Calcular costo adicional por unidad (envío + impuestos distribuido entre todas las unidades)
             const additionalCost = Number(shipping_cost) + Number(shipping_tax);
-            const costPerItem = items.length > 0 ? additionalCost / items.length : 0;
+            // Calcular cantidad total de todas las unidades
+            const totalQuantity = items.reduce((sum, item) => sum + Number(item.quantity), 0);
+            const costPerUnit = totalQuantity > 0 ? additionalCost / totalQuantity : 0;
             for (const item of items) {
                 const component = await database_config_1.db.get('SELECT * FROM components WHERE code = ?', [item.component_code]);
                 if (!component) {
@@ -395,7 +397,7 @@ const createInvoice = async (req, res) => {
                 const quantity = Number(item.quantity);
                 const baseUnitCost = Number(item.unit_cost || 0);
                 // NUEVA FUNCIONALIDAD: Agregar costo de envío e impuestos al unit_cost
-                const itemUnitCost = baseUnitCost + costPerItem;
+                const itemUnitCost = baseUnitCost + costPerUnit;
                 switch (operation) {
                     case 'IN':
                         newStock += quantity;
@@ -444,7 +446,8 @@ const createInvoice = async (req, res) => {
                     quantity: item.quantity,
                     unit_cost: itemUnitCost, // Mostrar el unit_cost que incluye costos adicionales
                     base_unit_cost: baseUnitCost, // Mostrar también el costo base original
-                    additional_cost_per_item: costPerItem, // Mostrar cuánto se agregó por costos de envío/impuestos
+                    additional_cost_per_unit: costPerUnit, // Mostrar cuánto se agregó por costos de envío/impuestos por unidad
+                    total_additional_cost: costPerUnit * quantity, // Mostrar el costo adicional total para este item
                     total_cost: item.total_cost,
                     new_stock: newStock
                 });
