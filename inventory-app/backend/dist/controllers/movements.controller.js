@@ -53,11 +53,25 @@ const getMovements = async (req, res) => {
 exports.getMovements = getMovements;
 const createMovement = async (req, res) => {
     try {
-        const { movement_type_id, component_id, quantity, unit_cost = 0, reference_number, notes } = req.body;
+        const { type, component_id, quantity, unit_cost = 0, reference_number, notes } = req.body;
         const userId = req.user?.userId;
-        const movementType = await database_config_1.db.get('SELECT * FROM movement_types WHERE id = ?', [movement_type_id]);
-        if (!movementType) {
-            return res.status(400).json({ error: 'Tipo de movimiento no válido' });
+        // Mapear el tipo a operación
+        let operation;
+        switch (type) {
+            case 'entrada':
+                operation = 'IN';
+                break;
+            case 'salida':
+                operation = 'OUT';
+                break;
+            case 'reserva':
+                operation = 'RESERVE';
+                break;
+            case 'liberacion':
+                operation = 'RELEASE';
+                break;
+            default:
+                return res.status(400).json({ error: 'Tipo de movimiento no válido' });
         }
         const component = await database_config_1.db.get('SELECT * FROM components WHERE id = ?', [component_id]);
         if (!component) {
@@ -66,9 +80,14 @@ const createMovement = async (req, res) => {
         await database_config_1.db.transaction(async () => {
             let newStock = component.current_stock;
             let newReservedStock = component.reserved_stock || 0;
-            switch (movementType.operation) {
+            let newCostPrice = component.cost_price || 0;
+            switch (operation) {
                 case 'IN':
                     newStock += Number(quantity);
+                    // Actualizar el precio del componente si el nuevo precio es mayor
+                    if (unit_cost > newCostPrice) {
+                        newCostPrice = unit_cost;
+                    }
                     break;
                 case 'OUT':
                     if (component.current_stock < quantity) {
@@ -89,23 +108,20 @@ const createMovement = async (req, res) => {
                     newReservedStock -= Number(quantity);
                     break;
             }
-            await database_config_1.db.run('UPDATE components SET current_stock = ?, reserved_stock = ?, updated_at = ? WHERE id = ?', [newStock, newReservedStock, new Date().toISOString(), component_id]);
+            await database_config_1.db.run('UPDATE components SET current_stock = ?, reserved_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?', [newStock, newReservedStock, newCostPrice, new Date().toISOString(), component_id]);
             const movementId = generateId();
             const now = new Date().toISOString();
             await database_config_1.db.run(`INSERT INTO movements (
-          id, movement_type_id, component_id, quantity, 
-          unit_cost, reference_number, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-                movementId, movement_type_id, component_id, quantity,
-                unit_cost, reference_number, notes, userId, now
+          id, type, component_id, quantity, 
+          unit_cost, total_cost, reference, notes, user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+                movementId, type, component_id, quantity,
+                unit_cost, quantity * unit_cost, reference_number, notes, userId, now
             ]);
             const newMovement = await database_config_1.db.get(`SELECT 
           m.*,
-          mt.name as movement_type_name,
-          mt.operation,
           c.name as component_name
         FROM movements m
-        JOIN movement_types mt ON m.movement_type_id = mt.id
         JOIN components c ON m.component_id = c.id
         WHERE m.id = ?`, [movementId]);
             res.status(201).json({
@@ -340,10 +356,16 @@ const createInvoice = async (req, res) => {
                 }
                 // Update component stock based on movement type
                 let newStock = component.current_stock;
+                let newCostPrice = component.cost_price || 0;
                 const quantity = Number(item.quantity);
+                const itemUnitCost = Number(item.unit_cost || 0);
                 switch (movementType.operation) {
                     case 'IN':
                         newStock += quantity;
+                        // Actualizar el precio del componente si el nuevo precio es mayor
+                        if (itemUnitCost > newCostPrice) {
+                            newCostPrice = itemUnitCost;
+                        }
                         break;
                     case 'OUT':
                         if (component.current_stock < quantity) {
@@ -358,9 +380,9 @@ const createInvoice = async (req, res) => {
                         await database_config_1.db.run('UPDATE components SET reserved_stock = ?, updated_at = ? WHERE id = ?', [(component.reserved_stock || 0) + quantity, now, component.id]);
                         break;
                 }
-                // Update stock if it's IN or OUT operation
+                // Update stock and price if it's IN or OUT operation
                 if (movementType.operation === 'IN' || movementType.operation === 'OUT') {
-                    await database_config_1.db.run('UPDATE components SET current_stock = ?, updated_at = ? WHERE id = ?', [newStock, now, component.id]);
+                    await database_config_1.db.run('UPDATE components SET current_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?', [newStock, newCostPrice, now, component.id]);
                 }
                 const movementId = generateId();
                 // Map movement type to valid table type values
