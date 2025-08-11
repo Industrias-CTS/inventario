@@ -64,7 +64,7 @@ router.post(
     body('shipping_cost').optional().isNumeric().withMessage('El costo de envío debe ser numérico'),
     body('shipping_tax').optional().isNumeric().withMessage('Los impuestos de envío deben ser numéricos'),
     // Validación flexible para facturas - movement_type_id O type opcional
-    body().custom((value, { req }) => {
+    body().custom((_, { req }) => {
       if (req.body.type && !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(req.body.type)) {
         throw new Error('Tipo de movimiento no válido');
       }

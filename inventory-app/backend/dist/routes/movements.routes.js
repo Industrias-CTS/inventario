@@ -2,16 +2,16 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const express_validator_1 = require("express-validator");
-const movements_controller_1 = require("@/controllers/movements.controller");
-const auth_1 = require("@/middlewares/auth");
-const validation_1 = require("@/middlewares/validation");
+const movements_controller_1 = require("../controllers/movements.controller");
+const auth_1 = require("../middlewares/auth");
+const validation_1 = require("../middlewares/validation");
 const router = (0, express_1.Router)();
 router.get('/', auth_1.authenticate, movements_controller_1.getMovements);
 router.post('/', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
     (0, express_validator_1.body)('component_id').notEmpty().withMessage('ID de componente es requerido'),
     (0, express_validator_1.body)('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
     // Validación flexible - acepta movement_type_id O type
-    (0, express_validator_1.body)().custom((value, { req }) => {
+    (0, express_validator_1.body)().custom((_, { req }) => {
         if (!req.body.movement_type_id && !req.body.type) {
             throw new Error('movement_type_id o type es requerido');
         }
@@ -36,7 +36,7 @@ router.post('/invoice', auth_1.authenticate, (0, auth_1.authorize)('admin', 'use
     (0, express_validator_1.body)('shipping_cost').optional().isNumeric().withMessage('El costo de envío debe ser numérico'),
     (0, express_validator_1.body)('shipping_tax').optional().isNumeric().withMessage('Los impuestos de envío deben ser numéricos'),
     // Validación flexible para facturas - movement_type_id O type opcional
-    (0, express_validator_1.body)().custom((value, { req }) => {
+    (0, express_validator_1.body)().custom((_, { req }) => {
         if (req.body.type && !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(req.body.type)) {
             throw new Error('Tipo de movimiento no válido');
         }

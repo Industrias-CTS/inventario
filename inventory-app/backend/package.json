@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "npx ts-node src/index-simple.ts",
     "dev-full": "nodemon",
-    "build": "tsc && tsc-alias",
+    "build": "tsc && node fix-paths.js",
+    "build-tsc": "tsc && tsc-alias",
     "start": "node dist/index-simple.js",
     "migrate": "node dist/database/migrate.js",
     "seed": "node dist/database/seed.js"
