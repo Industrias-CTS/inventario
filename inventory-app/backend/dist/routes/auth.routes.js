@@ -2,9 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const express_validator_1 = require("express-validator");
-const auth_controller_1 = require("../controllers/auth.controller");
-const auth_1 = require("../middlewares/auth");
-const validation_1 = require("../middlewares/validation");
+const auth_controller_1 = require("@/controllers/auth.controller");
+const auth_1 = require("@/middlewares/auth");
+const validation_1 = require("@/middlewares/validation");
 const router = (0, express_1.Router)();
 router.post('/register', [
     (0, express_validator_1.body)('username').isLength({ min: 3 }).withMessage('El username debe tener al menos 3 caracteres'),

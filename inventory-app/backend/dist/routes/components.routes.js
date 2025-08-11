@@ -2,9 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const express_validator_1 = require("express-validator");
-const components_controller_1 = require("../controllers/components.controller");
-const auth_1 = require("../middlewares/auth");
-const validation_1 = require("../middlewares/validation");
+const components_controller_1 = require("@/controllers/components.controller");
+const auth_1 = require("@/middlewares/auth");
+const validation_1 = require("@/middlewares/validation");
 const router = (0, express_1.Router)();
 router.get('/', auth_1.authenticate, components_controller_1.getComponents);
 router.get('/:id', auth_1.authenticate, components_controller_1.getComponentById);

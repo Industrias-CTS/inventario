@@ -19,9 +19,18 @@ router.post(
   authenticate,
   authorize('admin', 'user'),
   [
-    body('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
     body('component_id').notEmpty().withMessage('ID de componente es requerido'),
     body('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
+    // Validación flexible - acepta movement_type_id O type
+    body().custom((_, { req }) => {
+      if (!req.body.movement_type_id && !req.body.type) {
+        throw new Error('movement_type_id o type es requerido');
+      }
+      if (req.body.type && !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(req.body.type)) {
+        throw new Error('Tipo de movimiento no válido');
+      }
+      return true;
+    }),
   ],
   validateRequest,
   createMovement
@@ -46,7 +55,6 @@ router.post(
   authenticate,
   authorize('admin', 'user'),
   [
-    body('movement_type_id').notEmpty().withMessage('ID de tipo de movimiento es requerido'),
     body('reference_number').notEmpty().withMessage('Número de referencia es requerido'),
     body('items').isArray({ min: 1 }).withMessage('Debe incluir al menos un item'),
     body('items.*.component_code').notEmpty().withMessage('Código de componente es requerido'),
@@ -55,6 +63,13 @@ router.post(
     body('items.*.total_cost').isNumeric().isFloat({ gt: 0 }).withMessage('El costo total debe ser mayor a 0'),
     body('shipping_cost').optional().isNumeric().withMessage('El costo de envío debe ser numérico'),
     body('shipping_tax').optional().isNumeric().withMessage('Los impuestos de envío deben ser numéricos'),
+    // Validación flexible para facturas - movement_type_id O type opcional
+    body().custom((value, { req }) => {
+      if (req.body.type && !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(req.body.type)) {
+        throw new Error('Tipo de movimiento no válido');
+      }
+      return true;
+    }),
   ],
   validateRequest,
   createInvoice
