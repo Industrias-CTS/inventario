@@ -381,6 +381,9 @@ const createInvoice = async (req, res) => {
             const now = new Date().toISOString();
             const movements = [];
             let totalInvoiceAmount = 0;
+            // Calcular costo adicional por item (envío + impuestos distribuido entre todos los items)
+            const additionalCost = Number(shipping_cost) + Number(shipping_tax);
+            const costPerItem = items.length > 0 ? additionalCost / items.length : 0;
             for (const item of items) {
                 const component = await database_config_1.db.get('SELECT * FROM components WHERE code = ?', [item.component_code]);
                 if (!component) {
@@ -390,7 +393,9 @@ const createInvoice = async (req, res) => {
                 let newStock = component.current_stock;
                 let newCostPrice = component.cost_price || 0;
                 const quantity = Number(item.quantity);
-                const itemUnitCost = Number(item.unit_cost || 0);
+                const baseUnitCost = Number(item.unit_cost || 0);
+                // NUEVA FUNCIONALIDAD: Agregar costo de envío e impuestos al unit_cost
+                const itemUnitCost = baseUnitCost + costPerItem;
                 switch (operation) {
                     case 'IN':
                         newStock += quantity;
@@ -425,8 +430,8 @@ const createInvoice = async (req, res) => {
                     movementType,
                     component.id,
                     item.quantity,
-                    item.unit_cost || 0,
-                    item.total_cost || (item.quantity * (item.unit_cost || 0)),
+                    itemUnitCost, // Usar el unit_cost que incluye costos adicionales
+                    item.total_cost || (item.quantity * itemUnitCost),
                     reference_number,
                     notes || `Factura ${reference_number}`,
                     userId,
@@ -437,7 +442,9 @@ const createInvoice = async (req, res) => {
                     component_code: item.component_code,
                     component_name: item.component_name,
                     quantity: item.quantity,
-                    unit_cost: item.unit_cost || 0,
+                    unit_cost: itemUnitCost, // Mostrar el unit_cost que incluye costos adicionales
+                    base_unit_cost: baseUnitCost, // Mostrar también el costo base original
+                    additional_cost_per_item: costPerItem, // Mostrar cuánto se agregó por costos de envío/impuestos
                     total_cost: item.total_cost,
                     new_stock: newStock
                 });
