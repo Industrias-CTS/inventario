@@ -6,7 +6,14 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 export const getProjections = async (_req: Request, res: Response) => {
   try {
     const projections = await db.query(
-      `SELECT * FROM projections ORDER BY created_at DESC`
+      `SELECT p.*, 
+              u.username, 
+              u.first_name, 
+              u.last_name,
+              u.email
+       FROM projections p
+       LEFT JOIN users u ON p.user_id = u.id
+       ORDER BY p.created_at DESC`
     );
     
     res.json({ projections });
@@ -21,7 +28,14 @@ export const getProjectionById = async (req: Request, res: Response) => {
     const { id } = req.params;
     
     const projection = await db.get(
-      'SELECT * FROM projections WHERE id = ?',
+      `SELECT p.*, 
+              u.username, 
+              u.first_name, 
+              u.last_name,
+              u.email
+       FROM projections p
+       LEFT JOIN users u ON p.user_id = u.id
+       WHERE p.id = ?`,
       [id]
     );
     
@@ -95,6 +109,11 @@ export const createProjection = async (req: Request, res: Response) => {
       // Insertar requerimientos si existen
       if (requirements && Array.isArray(requirements)) {
         for (const req of requirements) {
+          // Calcular shortage correctamente
+          const requiredQty = req.required_quantity || 0;
+          const availableQty = req.available_quantity || 0;
+          const shortage = Math.max(0, requiredQty - availableQty);
+          
           await db.run(
             `INSERT INTO projection_requirements (
               projection_id, component_id, required_quantity, 
@@ -103,9 +122,9 @@ export const createProjection = async (req: Request, res: Response) => {
             [
               projectionId, 
               req.component_id, 
-              req.required_quantity || 0,
-              req.available_quantity || 0,
-              req.shortage || 0
+              requiredQty,
+              availableQty,
+              shortage
             ]
           );
         }
@@ -194,6 +213,11 @@ export const updateProjection = async (req: Request, res: Response) => {
         await db.run('DELETE FROM projection_requirements WHERE projection_id = ?', [id]);
         
         for (const req of requirements) {
+          // Calcular shortage correctamente
+          const requiredQty = req.required_quantity || 0;
+          const availableQty = req.available_quantity || 0;
+          const shortage = Math.max(0, requiredQty - availableQty);
+          
           await db.run(
             `INSERT INTO projection_requirements (
               projection_id, component_id, required_quantity, 
@@ -202,9 +226,9 @@ export const updateProjection = async (req: Request, res: Response) => {
             [
               id, 
               req.component_id, 
-              req.required_quantity || 0,
-              req.available_quantity || 0,
-              req.shortage || 0
+              requiredQty,
+              availableQty,
+              shortage
             ]
           );
         }

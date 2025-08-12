@@ -5,7 +5,14 @@ const database_config_1 = require("../config/database.config");
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const getProjections = async (_req, res) => {
     try {
-        const projections = await database_config_1.db.query(`SELECT * FROM projections ORDER BY created_at DESC`);
+        const projections = await database_config_1.db.query(`SELECT p.*, 
+              u.username, 
+              u.first_name, 
+              u.last_name,
+              u.email
+       FROM projections p
+       LEFT JOIN users u ON p.user_id = u.id
+       ORDER BY p.created_at DESC`);
         res.json({ projections });
     }
     catch (error) {
@@ -17,7 +24,14 @@ exports.getProjections = getProjections;
 const getProjectionById = async (req, res) => {
     try {
         const { id } = req.params;
-        const projection = await database_config_1.db.get('SELECT * FROM projections WHERE id = ?', [id]);
+        const projection = await database_config_1.db.get(`SELECT p.*, 
+              u.username, 
+              u.first_name, 
+              u.last_name,
+              u.email
+       FROM projections p
+       LEFT JOIN users u ON p.user_id = u.id
+       WHERE p.id = ?`, [id]);
         if (!projection) {
             return res.status(404).json({ error: 'Proyección no encontrada' });
         }
@@ -69,15 +83,19 @@ const createProjection = async (req, res) => {
             // Insertar requerimientos si existen
             if (requirements && Array.isArray(requirements)) {
                 for (const req of requirements) {
+                    // Calcular shortage correctamente
+                    const requiredQty = req.required_quantity || 0;
+                    const availableQty = req.available_quantity || 0;
+                    const shortage = Math.max(0, requiredQty - availableQty);
                     await database_config_1.db.run(`INSERT INTO projection_requirements (
               projection_id, component_id, required_quantity, 
               available_quantity, shortage
             ) VALUES (?, ?, ?, ?, ?)`, [
                         projectionId,
                         req.component_id,
-                        req.required_quantity || 0,
-                        req.available_quantity || 0,
-                        req.shortage || 0
+                        requiredQty,
+                        availableQty,
+                        shortage
                     ]);
                 }
             }
@@ -136,15 +154,19 @@ const updateProjection = async (req, res) => {
             if (requirements && Array.isArray(requirements)) {
                 await database_config_1.db.run('DELETE FROM projection_requirements WHERE projection_id = ?', [id]);
                 for (const req of requirements) {
+                    // Calcular shortage correctamente
+                    const requiredQty = req.required_quantity || 0;
+                    const availableQty = req.available_quantity || 0;
+                    const shortage = Math.max(0, requiredQty - availableQty);
                     await database_config_1.db.run(`INSERT INTO projection_requirements (
               projection_id, component_id, required_quantity, 
               available_quantity, shortage
             ) VALUES (?, ?, ?, ?, ?)`, [
                         id,
                         req.component_id,
-                        req.required_quantity || 0,
-                        req.available_quantity || 0,
-                        req.shortage || 0
+                        requiredQty,
+                        availableQty,
+                        shortage
                     ]);
                 }
             }
