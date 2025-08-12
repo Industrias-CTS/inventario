@@ -28,6 +28,32 @@ const getRecipes = async (req, res) => {
         }
         query += ' ORDER BY r.name';
         const recipes = await database_config_1.db.query(query, values);
+        // Obtener ingredientes y calcular costos para cada receta
+        for (const recipe of recipes) {
+            const ingredientsQuery = `
+        SELECT 
+          ri.*,
+          c.code as component_code,
+          c.name as component_name,
+          c.cost_price,
+          u.name as unit_name,
+          u.symbol as unit_symbol
+        FROM recipe_ingredients ri
+        JOIN components c ON ri.component_id = c.id
+        LEFT JOIN units u ON c.unit_id = u.id
+        WHERE ri.recipe_id = ?
+      `;
+            const ingredients = await database_config_1.db.query(ingredientsQuery, [recipe.id]);
+            // Calcular costo total de la receta
+            let totalCost = 0;
+            for (const ingredient of ingredients) {
+                ingredient.ingredient_cost = ingredient.quantity * (ingredient.cost_price || 0);
+                totalCost += ingredient.ingredient_cost;
+            }
+            recipe.ingredients = ingredients;
+            recipe.total_cost = totalCost;
+            recipe.unit_cost = recipe.output_quantity > 0 ? totalCost / recipe.output_quantity : 0;
+        }
         res.json({ recipes });
     }
     catch (error) {
@@ -59,6 +85,7 @@ const getRecipeById = async (req, res) => {
         ri.*,
         c.code as component_code,
         c.name as component_name,
+        c.cost_price,
         u.name as unit_name,
         u.symbol as unit_symbol
       FROM recipe_ingredients ri
@@ -68,7 +95,15 @@ const getRecipeById = async (req, res) => {
       ORDER BY c.name
     `;
         const ingredients = await database_config_1.db.query(ingredientsQuery, [id]);
+        // Calcular costo de cada ingrediente y el costo total
+        let totalCost = 0;
+        for (const ingredient of ingredients) {
+            ingredient.ingredient_cost = ingredient.quantity * (ingredient.cost_price || 0);
+            totalCost += ingredient.ingredient_cost;
+        }
         recipe.ingredients = ingredients;
+        recipe.total_cost = totalCost;
+        recipe.unit_cost = recipe.output_quantity > 0 ? totalCost / recipe.output_quantity : 0;
         res.json({ recipe });
     }
     catch (error) {

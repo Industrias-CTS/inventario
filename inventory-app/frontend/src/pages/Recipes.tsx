@@ -34,7 +34,7 @@ import {
   RemoveCircle,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
 import { recipesService } from '../services/recipes.service';
 import { componentsService } from '../services/components.service';
 import { authService } from '../services/auth.service';
@@ -58,6 +58,8 @@ export default function Recipes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState(false);
   const [loadingRecipe, setLoadingRecipe] = useState(false);
+  const [ingredientCosts, setIngredientCosts] = useState<{ [key: number]: { cost: number; total: number } }>({});
+  const [totalRecipeCost, setTotalRecipeCost] = useState(0);
   const queryClient = useQueryClient();
   
   // Obtener usuario actual para verificar permisos
@@ -137,6 +139,45 @@ export default function Recipes() {
     control,
     name: 'ingredients',
   });
+
+  const watchIngredients = useWatch({
+    control,
+    name: 'ingredients',
+    defaultValue: []
+  });
+  
+  const watchOutputQuantity = useWatch({
+    control,
+    name: 'output_quantity',
+    defaultValue: 1
+  });
+
+  // Calcular costos cuando cambian los ingredientes
+  React.useEffect(() => {
+    if (!componentsData) return;
+    
+    let total = 0;
+    const costs: { [key: number]: { cost: number; total: number } } = {};
+    
+    watchIngredients.forEach((ingredient: any, index: number) => {
+      if (ingredient.component_id && ingredient.quantity) {
+        const component = componentsData.components.find(
+          (c: any) => c.id === ingredient.component_id
+        );
+        if (component) {
+          const ingredientTotal = (component.cost_price || 0) * ingredient.quantity;
+          costs[index] = {
+            cost: component.cost_price || 0,
+            total: ingredientTotal
+          };
+          total += ingredientTotal;
+        }
+      }
+    });
+    
+    setIngredientCosts(costs);
+    setTotalRecipeCost(total);
+  }, [watchIngredients, componentsData]);
 
   const columns: GridColDef[] = [
     { field: 'code', headerName: 'Código', width: 100 },
@@ -589,7 +630,7 @@ export default function Recipes() {
                   
                   {fields.map((field, index) => (
                     <Grid container spacing={2} key={field.id} sx={{ mb: 2 }}>
-                      <Grid item xs={12} sm={8}>
+                      <Grid item xs={12} sm={5}>
                         <Controller
                           name={`ingredients.${index}.component_id`}
                           control={control}
@@ -607,14 +648,14 @@ export default function Recipes() {
                               <MenuItem value="">Seleccionar...</MenuItem>
                               {componentsData?.components.map((component) => (
                                 <MenuItem key={component.id} value={component.id}>
-                                  {component.name} ({component.unit_symbol})
+                                  {component.name} ({component.unit_symbol}) - ${component.cost_price?.toFixed(2) || '0.00'}
                                 </MenuItem>
                               ))}
                             </TextField>
                           )}
                         />
                       </Grid>
-                      <Grid item xs={10} sm={3}>
+                      <Grid item xs={6} sm={2}>
                         <Controller
                           name={`ingredients.${index}.quantity`}
                           control={control}
@@ -636,6 +677,24 @@ export default function Recipes() {
                           )}
                         />
                       </Grid>
+                      <Grid item xs={6} sm={2}>
+                        <TextField
+                          fullWidth
+                          label="Costo Unit."
+                          value={`$${ingredientCosts[index]?.cost?.toFixed(2) || '0.00'}`}
+                          InputProps={{ readOnly: true }}
+                          variant="filled"
+                        />
+                      </Grid>
+                      <Grid item xs={10} sm={2}>
+                        <TextField
+                          fullWidth
+                          label="Costo Total"
+                          value={`$${ingredientCosts[index]?.total?.toFixed(2) || '0.00'}`}
+                          InputProps={{ readOnly: true }}
+                          variant="filled"
+                        />
+                      </Grid>
                       <Grid item xs={2} sm={1}>
                         <IconButton
                           color="error"
@@ -648,6 +707,40 @@ export default function Recipes() {
                       </Grid>
                     </Grid>
                   ))}
+                  
+                  {/* Resumen de costos */}
+                  <Grid item xs={12}>
+                    <Card sx={{ mt: 2, bgcolor: 'background.default' }}>
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={4}>
+                            <Typography variant="body2" color="text.secondary">
+                              Costo Total de Ingredientes:
+                            </Typography>
+                            <Typography variant="h6" color="secondary">
+                              ${totalRecipeCost.toFixed(2)}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <Typography variant="body2" color="text.secondary">
+                              Cantidad de Salida:
+                            </Typography>
+                            <Typography variant="h6">
+                              {watchOutputQuantity} unidades
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <Typography variant="body2" color="text.secondary">
+                              Costo por Unidad:
+                            </Typography>
+                            <Typography variant="h6" color="primary">
+                              ${watchOutputQuantity > 0 ? (totalRecipeCost / watchOutputQuantity).toFixed(2) : '0.00'}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
                 </Grid>
               </Grid>
             </DialogContent>
