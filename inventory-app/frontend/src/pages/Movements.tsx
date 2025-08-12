@@ -318,9 +318,11 @@ export default function Movements() {
       Promise.all(
         movementItems.map(item => 
           movementsService.createMovement({
-            ...data,
+            movement_type_id: data.movement_type_id,
             component_id: item.component_id,
             quantity: item.quantity,
+            unit_cost: data.unit_cost || 0,
+            reference_number: data.reference_number,
             notes: `${data.notes || ''} - Receta: ${selectedRecipe?.name || ''} (x${recipeMultiplier})`.trim()
           })
         )
@@ -335,7 +337,8 @@ export default function Movements() {
         setRecipeMultiplier(1);
         alert('Movimientos creados exitosamente desde la receta');
       }).catch((error) => {
-        alert(`Error al crear movimientos: ${error.message}`);
+        console.error('Error al crear movimientos:', error);
+        alert(`Error al crear movimientos: ${error.response?.data?.error || error.message}`);
       });
     } else {
       // Movimiento individual normal
