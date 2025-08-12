@@ -43,6 +43,7 @@ import { format } from 'date-fns';
 import { movementsService } from '../services/movements.service';
 import { componentsService } from '../services/components.service';
 import { movementTypesService } from '../services/movement-types.service';
+import { recipesService } from '../services/recipes.service';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -80,6 +81,15 @@ export default function Movements() {
   }>>([]);
   const [isNewComponent, setIsNewComponent] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<any>(null);
+  const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
+  const [recipeMultiplier, setRecipeMultiplier] = useState(1);
+  const [movementItems, setMovementItems] = useState<Array<{
+    component_id: string;
+    component_name: string;
+    quantity: number;
+    unit: string;
+  }>>([]);
+  const [useRecipe, setUseRecipe] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: movementsData, isLoading: movementsLoading } = useQuery({
@@ -100,6 +110,11 @@ export default function Movements() {
   const { data: movementTypesData } = useQuery({
     queryKey: ['movement-types'],
     queryFn: () => movementTypesService.getMovementTypes(),
+  });
+
+  const { data: recipesData } = useQuery({
+    queryKey: ['recipes-list'],
+    queryFn: () => recipesService.getRecipes({ is_active: true }),
   });
 
   const createMovementMutation = useMutation({
@@ -213,15 +228,16 @@ export default function Movements() {
       width: 150,
       renderCell: (params) => {
         const operation = params.row.operation;
-        const color = operation === 'IN' ? 'success' : 'error';
-        const icon = operation === 'IN' ? <ArrowDownward /> : <ArrowUpward />;
+        const isEntry = operation === 'IN';
+        const icon = isEntry ? <ArrowDownward /> : <ArrowUpward />;
+        const color = isEntry ? '#22c55e' : '#ef4444';
         return (
-          <Chip
-            label={params.value}
-            color={color}
-            size="small"
-            icon={icon}
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Box sx={{ color, display: 'flex' }}>{icon}</Box>
+            <Typography sx={{ color, fontWeight: 500 }}>
+              {params.value}
+            </Typography>
+          </Box>
         );
       },
     },
@@ -296,7 +312,35 @@ export default function Movements() {
   ];
 
   const onSubmitMovement = (data: any) => {
-    createMovementMutation.mutate(data);
+    // Si estamos usando una receta, procesar múltiples movimientos
+    if (useRecipe && movementItems.length > 0) {
+      // Crear movimientos para cada componente de la receta
+      Promise.all(
+        movementItems.map(item => 
+          movementsService.createMovement({
+            ...data,
+            component_id: item.component_id,
+            quantity: item.quantity,
+            notes: `${data.notes || ''} - Receta: ${selectedRecipe?.name || ''} (x${recipeMultiplier})`.trim()
+          })
+        )
+      ).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['movements'] });
+        queryClient.invalidateQueries({ queryKey: ['components'] });
+        setOpenMovementDialog(false);
+        resetMovement();
+        setMovementItems([]);
+        setSelectedRecipe(null);
+        setUseRecipe(false);
+        setRecipeMultiplier(1);
+        alert('Movimientos creados exitosamente desde la receta');
+      }).catch((error) => {
+        alert(`Error al crear movimientos: ${error.message}`);
+      });
+    } else {
+      // Movimiento individual normal
+      createMovementMutation.mutate(data);
+    }
   };
 
   const onSubmitReservation = (data: any) => {
@@ -433,6 +477,115 @@ export default function Movements() {
           <DialogTitle>Nuevo Movimiento</DialogTitle>
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 1 }}>
+              {/* Switch para usar receta */}
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={useRecipe}
+                      onChange={(e) => {
+                        setUseRecipe(e.target.checked);
+                        if (e.target.checked) {
+                          setMovementItems([]);
+                          setSelectedRecipe(null);
+                          setRecipeMultiplier(1);
+                        }
+                      }}
+                    />
+                  }
+                  label="Usar receta para múltiples componentes"
+                />
+              </Grid>
+              
+              {/* Selector de receta si está activado */}
+              {useRecipe && (
+                <>
+                  <Grid item xs={12} sm={8}>
+                    <Autocomplete
+                      options={recipesData?.recipes || []}
+                      getOptionLabel={(option) => option.name}
+                      value={selectedRecipe}
+                      onChange={(event, newValue) => {
+                        setSelectedRecipe(newValue);
+                        if (newValue) {
+                          // Cargar los componentes de la receta
+                          const items = newValue.components.map((comp: any) => ({
+                            component_id: comp.component_id,
+                            component_name: comp.component_name,
+                            quantity: comp.quantity * recipeMultiplier,
+                            unit: comp.unit_symbol || 'unit'
+                          }));
+                          setMovementItems(items);
+                        } else {
+                          setMovementItems([]);
+                        }
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Seleccionar Receta"
+                          required={useRecipe}
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Multiplicador"
+                      type="number"
+                      value={recipeMultiplier}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 1;
+                        setRecipeMultiplier(value);
+                        // Actualizar cantidades de los items
+                        if (selectedRecipe) {
+                          const items = selectedRecipe.components.map((comp: any) => ({
+                            component_id: comp.component_id,
+                            component_name: comp.component_name,
+                            quantity: comp.quantity * value,
+                            unit: comp.unit_symbol || 'unit'
+                          }));
+                          setMovementItems(items);
+                        }
+                      }}
+                      InputProps={{ inputProps: { min: 1 } }}
+                      helperText="Cantidad de veces a aplicar la receta"
+                    />
+                  </Grid>
+                  
+                  {/* Mostrar componentes de la receta */}
+                  {movementItems.length > 0 && (
+                    <Grid item xs={12}>
+                      <Paper sx={{ p: 2, backgroundColor: 'background.default' }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Componentes de la receta (x{recipeMultiplier}):
+                        </Typography>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Componente</TableCell>
+                                <TableCell align="right">Cantidad</TableCell>
+                                <TableCell>Unidad</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {movementItems.map((item, index) => (
+                                <TableRow key={index}>
+                                  <TableCell>{item.component_name}</TableCell>
+                                  <TableCell align="right">{item.quantity}</TableCell>
+                                  <TableCell>{item.unit}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Paper>
+                    </Grid>
+                  )}
+                </>
+              )}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -452,53 +605,60 @@ export default function Movements() {
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Componente"
-                  select
-                  {...registerMovement('component_id', {
-                    required: 'El componente es requerido',
-                  })}
-                  error={!!movementErrors.component_id}
-                  helperText={movementErrors.component_id?.message as string}
-                >
-                  <MenuItem value="">Seleccionar...</MenuItem>
-                  {componentsData?.components.map((component) => {
-                    const availableStock = component.current_stock - component.reserved_stock;
-                    return (
-                      <MenuItem key={component.id} value={component.id}>
-                        {component.name} - {component.code} (Disponible: {availableStock})
-                      </MenuItem>
-                    );
-                  })}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Cantidad"
-                  type="number"
-                  {...registerMovement('quantity', {
-                    required: 'La cantidad es requerida',
-                    min: { value: 0.01, message: 'La cantidad debe ser mayor a 0' },
-                    validate: (value) => {
-                      if (selectedMovementType?.operation === 'OUT' && selectedComponentData) {
-                        const availableStock = selectedComponentData.current_stock - selectedComponentData.reserved_stock;
-                        if (parseFloat(value) > availableStock) {
-                          return `Stock insuficiente. Disponible: ${availableStock} unidades`;
+              
+              {/* Solo mostrar selector de componente si no estamos usando receta */}
+              {!useRecipe && (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Componente"
+                    select
+                    {...registerMovement('component_id', {
+                      required: !useRecipe ? 'El componente es requerido' : false,
+                    })}
+                    error={!!movementErrors.component_id}
+                    helperText={movementErrors.component_id?.message as string}
+                  >
+                    <MenuItem value="">Seleccionar...</MenuItem>
+                    {componentsData?.components.map((component) => {
+                      const availableStock = component.current_stock - component.reserved_stock;
+                      return (
+                        <MenuItem key={component.id} value={component.id}>
+                          {component.name} - {component.code} (Disponible: {availableStock})
+                        </MenuItem>
+                      );
+                    })}
+                  </TextField>
+                </Grid>
+              )}
+              {/* Solo mostrar cantidad si no estamos usando receta */}
+              {!useRecipe && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Cantidad"
+                    type="number"
+                    {...registerMovement('quantity', {
+                      required: !useRecipe ? 'La cantidad es requerida' : false,
+                      min: { value: 0.01, message: 'La cantidad debe ser mayor a 0' },
+                      validate: (value) => {
+                        if (!useRecipe && selectedMovementType?.operation === 'OUT' && selectedComponentData) {
+                          const availableStock = selectedComponentData.current_stock - selectedComponentData.reserved_stock;
+                          if (parseFloat(value) > availableStock) {
+                            return `Stock insuficiente. Disponible: ${availableStock} unidades`;
+                          }
                         }
+                        return true;
                       }
-                      return true;
-                    }
-                  })}
-                  error={!!movementErrors.quantity}
-                  helperText={movementErrors.quantity?.message as string}
-                />
-              </Grid>
+                    })}
+                    error={!!movementErrors.quantity}
+                    helperText={movementErrors.quantity?.message as string}
+                  />
+                </Grid>
+              )}
               
               {/* Mostrar información de stock para movimientos de salida */}
-              {selectedMovementType?.operation === 'OUT' && selectedComponentData && (
+              {!useRecipe && selectedMovementType?.operation === 'OUT' && selectedComponentData && (
                 <Grid item xs={12}>
                   <Alert 
                     severity={
@@ -525,14 +685,16 @@ export default function Movements() {
                 </Grid>
               )}
               
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Costo Unitario"
-                  type="number"
-                  {...registerMovement('unit_cost', { min: 0 })}
-                />
-              </Grid>
+              {!useRecipe && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Costo Unitario"
+                    type="number"
+                    {...registerMovement('unit_cost', { min: 0 })}
+                  />
+                </Grid>
+              )}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
