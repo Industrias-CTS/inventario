@@ -137,6 +137,12 @@ export const createMovement = async (req: Request, res: Response) => {
     let newStock = component.current_stock;
     let newReservedStock = component.reserved_stock || 0;
     let newCostPrice = component.cost_price || 0;
+    
+    // Para salidas, usar el cost_price del componente si no se especifica unit_cost
+    let finalUnitCost = unit_cost;
+    if (operation === 'OUT' && (!unit_cost || unit_cost === 0)) {
+      finalUnitCost = component.cost_price || 0;
+    }
 
     switch (operation) {
       case 'IN':
@@ -181,7 +187,7 @@ export const createMovement = async (req: Request, res: Response) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         movementId, movementType, component_id, quantity,
-        unit_cost, quantity * unit_cost, reference_number, notes, userId, now
+        finalUnitCost, quantity * finalUnitCost, reference_number, notes, userId, now
       ]
     );
 

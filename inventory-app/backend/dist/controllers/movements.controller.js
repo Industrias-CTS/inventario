@@ -119,6 +119,11 @@ const createMovement = async (req, res) => {
         let newStock = component.current_stock;
         let newReservedStock = component.reserved_stock || 0;
         let newCostPrice = component.cost_price || 0;
+        // Para salidas, usar el cost_price del componente si no se especifica unit_cost
+        let finalUnitCost = unit_cost;
+        if (operation === 'OUT' && (!unit_cost || unit_cost === 0)) {
+            finalUnitCost = component.cost_price || 0;
+        }
         switch (operation) {
             case 'IN':
                 newStock += Number(quantity);
@@ -154,7 +159,7 @@ const createMovement = async (req, res) => {
         unit_cost, total_cost, reference, notes, user_id, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
             movementId, movementType, component_id, quantity,
-            unit_cost, quantity * unit_cost, reference_number, notes, userId, now
+            finalUnitCost, quantity * finalUnitCost, reference_number, notes, userId, now
         ]);
         const newMovement = await database_config_1.db.get(`SELECT 
         m.*,
