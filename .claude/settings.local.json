@@ -30,7 +30,8 @@
       "Bash(set PORT=3000)",
       "Bash(mv:*)",
       "Bash(test-price-update.bat)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npm run start:*)"
     ],
     "deny": []
   }
