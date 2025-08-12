@@ -314,14 +314,28 @@ export default function Movements() {
   const onSubmitMovement = (data: any) => {
     // Si estamos usando una receta, procesar múltiples movimientos
     if (useRecipe && movementItems.length > 0) {
+      // Validar que todos los items tengan datos válidos
+      const validItems = movementItems.filter(item => 
+        item.component_id && 
+        item.quantity && 
+        item.quantity > 0
+      );
+      
+      if (validItems.length === 0) {
+        alert('No hay componentes válidos en la receta seleccionada');
+        return;
+      }
+      
+      console.log('Creando movimientos para:', validItems);
+      
       // Crear movimientos para cada componente de la receta
       Promise.all(
-        movementItems.map(item => 
+        validItems.map(item => 
           movementsService.createMovement({
             movement_type_id: data.movement_type_id,
             component_id: item.component_id,
-            quantity: item.quantity,
-            unit_cost: data.unit_cost || 0,
+            quantity: parseFloat(item.quantity.toString()),
+            unit_cost: parseFloat(data.unit_cost) || 0,
             reference_number: data.reference_number,
             notes: `${data.notes || ''} - Receta: ${selectedRecipe?.name || ''} (x${recipeMultiplier})`.trim()
           })
@@ -511,14 +525,21 @@ export default function Movements() {
                       onChange={(event, newValue) => {
                         setSelectedRecipe(newValue);
                         if (newValue) {
+                          console.log('Receta seleccionada:', newValue);
                           // Cargar los componentes de la receta
-                          const items = newValue.components.map((comp: any) => ({
-                            component_id: comp.component_id,
-                            component_name: comp.component_name,
-                            quantity: comp.quantity * recipeMultiplier,
-                            unit: comp.unit_symbol || 'unit'
-                          }));
-                          setMovementItems(items);
+                          if (newValue.components && newValue.components.length > 0) {
+                            const items = newValue.components.map((comp: any) => ({
+                              component_id: comp.component_id,
+                              component_name: comp.component_name,
+                              quantity: comp.quantity * recipeMultiplier,
+                              unit: comp.unit_symbol || 'unit'
+                            }));
+                            console.log('Items de movimiento creados:', items);
+                            setMovementItems(items);
+                          } else {
+                            console.warn('La receta no tiene componentes o tiene estructura incorrecta');
+                            setMovementItems([]);
+                          }
                         } else {
                           setMovementItems([]);
                         }
