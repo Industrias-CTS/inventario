@@ -21,6 +21,8 @@ async function initDatabase() {
     // Crear tablas si no existen
     await createTables();
     await seedInitialData();
+    // Ejecutar migraciones
+    await runMigrations();
     return db;
 }
 async function createTables() {
@@ -114,6 +116,26 @@ async function createTables() {
       completed_at DATETIME
     );
   `);
+}
+async function runMigrations() {
+    if (!db)
+        throw new Error('Database not initialized');
+    try {
+        // Verificar si la columna sale_price existe
+        const tableInfo = await db.all(`PRAGMA table_info(components)`);
+        const hasSalePrice = tableInfo.some((col) => col.name === 'sale_price');
+        if (!hasSalePrice) {
+            console.log('Ejecutando migración: agregando columna sale_price...');
+            await db.run(`ALTER TABLE components ADD COLUMN sale_price REAL DEFAULT 0`);
+            // Actualizar valores existentes con un valor por defecto basado en cost_price
+            await db.run(`UPDATE components SET sale_price = cost_price * 2 WHERE sale_price = 0 OR sale_price IS NULL`);
+            console.log('Columna sale_price agregada exitosamente');
+        }
+    }
+    catch (error) {
+        console.error('Error al ejecutar migraciones:', error);
+        // No lanzar error para no interrumpir el inicio del servidor
+    }
 }
 async function seedInitialData() {
     if (!db)
