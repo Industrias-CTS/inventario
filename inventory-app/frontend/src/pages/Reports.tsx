@@ -81,166 +81,145 @@ export default function Reports() {
 
   const generateMovementsPDF = async (data: any) => {
     try {
-      console.log('Generando PDF de movimientos con datos:', data);
+      console.log('=== INICIANDO GENERACIÓN PDF MOVIMIENTOS ===');
+      console.log('Datos recibidos:', JSON.stringify(data, null, 2));
       
       if (!data || !data.movements || !Array.isArray(data.movements)) {
+        console.error('Datos inválidos:', data);
         throw new Error('Datos de movimientos inválidos o vacíos');
       }
 
+      console.log('Creando documento PDF...');
       const doc = new jsPDF();
       
-      // Título del reporte
+      console.log('Agregando título...');
       doc.setFontSize(20);
       doc.text('Reporte de Movimientos', 14, 20);
       
-      // Información del reporte
-      doc.setFontSize(10);
-      const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
-      doc.text(`Generado: ${today}`, 14, 30);
+      console.log('Agregando información básica...');
+      doc.setFontSize(12);
+      doc.text('Fecha de generación: ' + new Date().toLocaleDateString(), 14, 40);
+      doc.text(`Total de movimientos: ${data.movements.length}`, 14, 50);
       
-      if (startDate && endDate) {
-        const start = format(startDate, 'dd/MM/yyyy', { locale: es });
-        const end = format(endDate, 'dd/MM/yyyy', { locale: es });
-        doc.text(`Período: ${start} - ${end}`, 14, 36);
-      }
-      
-      if (movementType !== 'all') {
-        doc.text(`Tipo: ${movementType}`, 14, 42);
-      }
-      
-      // Estadísticas
-      if (data.stats) {
-        doc.setFontSize(12);
-        doc.text('Resumen:', 14, 52);
-        doc.setFontSize(10);
-        doc.text(`Total de movimientos: ${data.stats.totalMovements}`, 14, 58);
-        doc.text(`Entradas: ${data.stats.totalIn || 0}`, 14, 64);
-        doc.text(`Salidas: ${data.stats.totalOut || 0}`, 14, 70);
-        doc.text(`Costo total: $${(data.stats.totalCost || 0).toFixed(2)}`, 14, 76);
-      }
-      
-      // Validar que hay movimientos para mostrar
       if (data.movements.length === 0) {
-        doc.text('No se encontraron movimientos para el período seleccionado.', 14, 90);
+        doc.text('No se encontraron movimientos.', 14, 70);
       } else {
-        // Tabla de movimientos
-        const tableData = data.movements.map((m: any) => [
-          m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy HH:mm') : '-',
-          m.movement_type || '-',
-          m.component_name || '-',
-          (m.quantity || 0).toString(),
-          m.unit_symbol || 'unit',
-          `$${(m.unit_cost || 0).toFixed(2)}`,
-          `$${(m.total_cost || 0).toFixed(2)}`,
-          m.reference_number || '-',
-          m.username || 'Sistema'
-        ]);
+        // Crear tabla simple sin autoTable primero
+        console.log('Agregando datos de movimientos...');
+        let yPosition = 70;
         
-        doc.autoTable({
-          head: [['Fecha', 'Tipo', 'Componente', 'Cant.', 'Unidad', 'C. Unit.', 'C. Total', 'Ref.', 'Usuario']],
-          body: tableData,
-          startY: 85,
-          styles: { fontSize: 8, cellPadding: 2 },
-          headStyles: { fillColor: [66, 139, 202] },
-          columnStyles: {
-            0: { cellWidth: 28 },
-            1: { cellWidth: 18 },
-            2: { cellWidth: 40 },
-            3: { cellWidth: 15, halign: 'right' },
-            4: { cellWidth: 15 },
-            5: { cellWidth: 18, halign: 'right' },
-            6: { cellWidth: 20, halign: 'right' },
-            7: { cellWidth: 20 },
-            8: { cellWidth: 20 },
-          },
+        // Headers
+        doc.setFontSize(10);
+        doc.text('Fecha', 14, yPosition);
+        doc.text('Tipo', 50, yPosition);
+        doc.text('Componente', 80, yPosition);
+        doc.text('Cantidad', 140, yPosition);
+        
+        yPosition += 10;
+        
+        // Solo mostrar los primeros 10 movimientos para la prueba
+        const movementsToShow = data.movements.slice(0, 10);
+        
+        movementsToShow.forEach((m: any, index: number) => {
+          if (yPosition > 280) return; // No exceder la página
+          
+          const fecha = m.created_at ? new Date(m.created_at).toLocaleDateString() : '-';
+          const tipo = m.movement_type || '-';
+          const componente = (m.component_name || '-').substring(0, 20); // Truncar
+          const cantidad = (m.quantity || 0).toString();
+          
+          doc.text(fecha, 14, yPosition);
+          doc.text(tipo, 50, yPosition);
+          doc.text(componente, 80, yPosition);
+          doc.text(cantidad, 140, yPosition);
+          
+          yPosition += 8;
         });
       }
       
-      // Guardar el PDF
-      const filename = `movimientos_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`;
-      console.log('Guardando PDF:', filename);
+      console.log('Guardando PDF...');
+      const filename = `movimientos_${Date.now()}.pdf`;
       doc.save(filename);
+      console.log('=== PDF GENERADO EXITOSAMENTE ===');
       
     } catch (error: any) {
-      console.error('Error en generateMovementsPDF:', error);
+      console.error('=== ERROR EN GENERACIÓN PDF ===');
+      console.error('Error completo:', error);
+      console.error('Stack trace:', error.stack);
       throw new Error(`Error generando PDF de movimientos: ${error.message || error}`);
     }
   };
 
   const generateInventoryPDF = async (data: any) => {
     try {
-      console.log('Generando PDF de inventario con datos:', data);
+      console.log('=== INICIANDO GENERACIÓN PDF INVENTARIO ===');
+      console.log('Datos recibidos:', data);
       
       if (!data || !data.inventory || !Array.isArray(data.inventory)) {
+        console.error('Datos inválidos:', data);
         throw new Error('Datos de inventario inválidos o vacíos');
       }
 
-      const doc = new jsPDF('landscape');
+      console.log('Creando documento PDF...');
+      const doc = new jsPDF();
       
-      // Título
+      console.log('Agregando título...');
       doc.setFontSize(20);
       doc.text('Reporte de Inventario', 14, 20);
       
-      // Información del reporte
-      doc.setFontSize(10);
-      const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
-      doc.text(`Generado: ${today}`, 14, 30);
-      
-      // Estadísticas
-      if (data.stats) {
-        doc.text(`Total de componentes: ${data.stats.totalComponents}`, 14, 36);
-        doc.text(`Valor total: $${(data.stats.totalValue || 0).toFixed(2)}`, 14, 42);
-        doc.text(`Stock bajo: ${data.stats.lowStockCount}`, 100, 36);
-        doc.text(`Stock óptimo: ${data.stats.optimalStockCount}`, 100, 42);
-      }
+      console.log('Agregando información básica...');
+      doc.setFontSize(12);
+      doc.text('Fecha de generación: ' + new Date().toLocaleDateString(), 14, 40);
+      doc.text(`Total de componentes: ${data.inventory.length}`, 14, 50);
       
       if (data.inventory.length === 0) {
-        doc.text('No se encontraron componentes en el inventario.', 14, 55);
+        doc.text('No se encontraron componentes.', 14, 70);
       } else {
-        // Tabla de inventario
-        const tableData = data.inventory.map((item: any) => [
-          item.code || '-',
-          item.name || '-',
-          item.category_name || '-',
-          (item.current_stock || 0).toString(),
-          (item.reserved_stock || 0).toString(),
-          (item.available_stock || 0).toString(),
-          (item.min_stock || 0).toString(),
-          (item.max_stock || 0).toString(),
-          item.unit_symbol || 'unit',
-          `$${(item.cost_price || 0).toFixed(2)}`,
-          `$${(item.total_value || 0).toFixed(2)}`
-        ]);
+        // Crear lista simple
+        console.log('Agregando datos de inventario...');
+        let yPosition = 70;
         
-        doc.autoTable({
-          head: [['Código', 'Nombre', 'Categoría', 'Stock', 'Reservado', 'Disponible', 'Mín.', 'Máx.', 'Unidad', 'Costo', 'Valor Total']],
-          body: tableData,
-          startY: 50,
-          styles: { fontSize: 8, cellPadding: 2 },
-          headStyles: { fillColor: [66, 139, 202] },
-          columnStyles: {
-            0: { cellWidth: 20 },
-            1: { cellWidth: 45 },
-            2: { cellWidth: 30 },
-            3: { cellWidth: 18, halign: 'right' },
-            4: { cellWidth: 20, halign: 'right' },
-            5: { cellWidth: 22, halign: 'right' },
-            6: { cellWidth: 15, halign: 'right' },
-            7: { cellWidth: 15, halign: 'right' },
-            8: { cellWidth: 18 },
-            9: { cellWidth: 20, halign: 'right' },
-            10: { cellWidth: 25, halign: 'right' },
-          },
+        // Headers
+        doc.setFontSize(10);
+        doc.text('Código', 14, yPosition);
+        doc.text('Nombre', 60, yPosition);
+        doc.text('Stock', 140, yPosition);
+        doc.text('Unidad', 170, yPosition);
+        
+        yPosition += 10;
+        
+        // Solo mostrar los primeros 15 componentes para la prueba
+        const itemsToShow = data.inventory.slice(0, 15);
+        
+        itemsToShow.forEach((item: any, index: number) => {
+          if (yPosition > 280) return; // No exceder la página
+          
+          const codigo = (item.code || '-').substring(0, 15);
+          const nombre = (item.name || '-').substring(0, 25);
+          const stock = (item.current_stock || 0).toString();
+          const unidad = item.unit_symbol || 'unit';
+          
+          doc.text(codigo, 14, yPosition);
+          doc.text(nombre, 60, yPosition);
+          doc.text(stock, 140, yPosition);
+          doc.text(unidad, 170, yPosition);
+          
+          yPosition += 8;
         });
+        
+        if (data.inventory.length > 15) {
+          doc.text(`... y ${data.inventory.length - 15} componentes más`, 14, yPosition + 10);
+        }
       }
       
-      // Guardar el PDF
-      const filename = `inventario_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`;
-      console.log('Guardando PDF:', filename);
+      console.log('Guardando PDF...');
+      const filename = `inventario_${Date.now()}.pdf`;
       doc.save(filename);
+      console.log('=== PDF INVENTARIO GENERADO EXITOSAMENTE ===');
       
     } catch (error: any) {
-      console.error('Error en generateInventoryPDF:', error);
+      console.error('=== ERROR EN GENERACIÓN PDF INVENTARIO ===');
+      console.error('Error completo:', error);
       throw new Error(`Error generando PDF de inventario: ${error.message || error}`);
     }
   };
@@ -388,10 +367,39 @@ export default function Reports() {
     }
   };
 
+  // Función de prueba simple para verificar jsPDF
+  const generateTestPDF = () => {
+    try {
+      console.log('Generando PDF de prueba...');
+      const doc = new jsPDF();
+      
+      doc.setFontSize(20);
+      doc.text('PDF de Prueba', 20, 20);
+      
+      doc.setFontSize(12);
+      doc.text('Este es un PDF de prueba para verificar que jsPDF funciona correctamente.', 20, 40);
+      doc.text('Si puedes ver este texto, la librería funciona bien.', 20, 50);
+      
+      const filename = `test_${Date.now()}.pdf`;
+      console.log('Guardando PDF de prueba:', filename);
+      doc.save(filename);
+      
+      console.log('PDF de prueba generado exitosamente');
+    } catch (error: any) {
+      console.error('Error en PDF de prueba:', error);
+    }
+  };
+
   const downloadReport = async (report: ReportCard) => {
     try {
       setLoading(report.title);
       setError(null);
+
+      // Agregar botón de prueba temporal
+      if (report.type === 'inventory') {
+        console.log('Generando PDF de prueba primero...');
+        generateTestPDF();
+      }
 
       switch (report.type) {
         case 'movements':
@@ -401,24 +409,31 @@ export default function Reports() {
           if (endDate) params.append('endDate', format(endDate, 'yyyy-MM-dd'));
           if (movementType !== 'all') params.append('movementType', movementType);
           
+          console.log('Solicitando datos de movimientos...');
           const movResponse = await api.get(`/reports/movements?${params.toString()}`);
+          console.log('Datos de movimientos recibidos:', movResponse.data);
           await generateMovementsPDF(movResponse.data.data);
           break;
           
         case 'inventory':
           // Obtener datos de inventario
+          console.log('Solicitando datos de inventario...');
           const invResponse = await api.get('/reports/inventory');
+          console.log('Datos de inventario recibidos:', invResponse.data);
           await generateInventoryPDF(invResponse.data.data);
           break;
           
         case 'low-stock':
           // Obtener datos de inventario y filtrar stock bajo
+          console.log('Solicitando datos de inventario para stock bajo...');
           const stockResponse = await api.get('/reports/inventory');
+          console.log('Datos de stock recibidos:', stockResponse.data);
           await generateLowStockPDF(stockResponse.data.data);
           break;
           
         case 'reservations':
           // Generar reporte de reservas
+          console.log('Generando reporte de reservas...');
           await generateReservationsPDF();
           break;
       }
