@@ -522,22 +522,30 @@ export default function Movements() {
                       options={recipesData?.recipes || []}
                       getOptionLabel={(option) => option.name}
                       value={selectedRecipe}
-                      onChange={(event, newValue) => {
+                      onChange={async (event, newValue) => {
                         setSelectedRecipe(newValue);
                         if (newValue) {
                           console.log('Receta seleccionada:', newValue);
-                          // Cargar los componentes de la receta
-                          if (newValue.components && newValue.components.length > 0) {
-                            const items = newValue.components.map((comp: any) => ({
-                              component_id: comp.component_id,
-                              component_name: comp.component_name,
-                              quantity: comp.quantity * recipeMultiplier,
-                              unit: comp.unit_symbol || 'unit'
-                            }));
-                            console.log('Items de movimiento creados:', items);
-                            setMovementItems(items);
-                          } else {
-                            console.warn('La receta no tiene componentes o tiene estructura incorrecta');
+                          try {
+                            // Obtener detalles completos de la receta incluyendo ingredientes
+                            const recipeDetails = await recipesService.getRecipeById(newValue.id);
+                            console.log('Detalles de receta:', recipeDetails);
+                            
+                            if (recipeDetails.recipe.ingredients && recipeDetails.recipe.ingredients.length > 0) {
+                              const items = recipeDetails.recipe.ingredients.map((ingredient: any) => ({
+                                component_id: ingredient.component_id,
+                                component_name: ingredient.component_name || ingredient.component?.name,
+                                quantity: ingredient.quantity * recipeMultiplier,
+                                unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit'
+                              }));
+                              console.log('Items de movimiento creados:', items);
+                              setMovementItems(items);
+                            } else {
+                              console.warn('La receta no tiene ingredientes');
+                              setMovementItems([]);
+                            }
+                          } catch (error) {
+                            console.error('Error al cargar detalles de receta:', error);
                             setMovementItems([]);
                           }
                         } else {
@@ -559,18 +567,25 @@ export default function Movements() {
                       label="Multiplicador"
                       type="number"
                       value={recipeMultiplier}
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const value = parseInt(e.target.value) || 1;
                         setRecipeMultiplier(value);
                         // Actualizar cantidades de los items
                         if (selectedRecipe) {
-                          const items = selectedRecipe.components.map((comp: any) => ({
-                            component_id: comp.component_id,
-                            component_name: comp.component_name,
-                            quantity: comp.quantity * value,
-                            unit: comp.unit_symbol || 'unit'
-                          }));
-                          setMovementItems(items);
+                          try {
+                            const recipeDetails = await recipesService.getRecipeById(selectedRecipe.id);
+                            if (recipeDetails.recipe.ingredients) {
+                              const items = recipeDetails.recipe.ingredients.map((ingredient: any) => ({
+                                component_id: ingredient.component_id,
+                                component_name: ingredient.component_name || ingredient.component?.name,
+                                quantity: ingredient.quantity * value,
+                                unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit'
+                              }));
+                              setMovementItems(items);
+                            }
+                          } catch (error) {
+                            console.error('Error al actualizar multiplicador:', error);
+                          }
                         }
                       }}
                       InputProps={{ inputProps: { min: 1 } }}
