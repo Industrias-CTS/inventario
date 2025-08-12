@@ -73,6 +73,7 @@ async function startServer() {
     const categoriesRoutes = require('./routes/categories.routes').default;
     const unitsRoutes = require('./routes/units.routes').default;
     const usersRoutes = require('./routes/users.routes').default;
+    const projectionsRoutes = require('./routes/projections.routes').default;
 
     app.use('/api/auth', authRoutes);
     app.use('/api/components', componentsRoutes);
@@ -81,6 +82,7 @@ async function startServer() {
     app.use('/api/categories', categoriesRoutes);
     app.use('/api/units', unitsRoutes);
     app.use('/api/users', usersRoutes);
+    app.use('/api/projections', projectionsRoutes);
 
 
     app.get('/api/movement-types', async (_req, res) => {
@@ -116,6 +118,7 @@ async function startServer() {
           units: '/api/units',
           movementTypes: '/api/movement-types',
           users: '/api/users',
+          projections: '/api/projections',
           health: '/health'
         }
       });
