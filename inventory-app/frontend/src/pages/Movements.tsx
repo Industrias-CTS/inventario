@@ -88,6 +88,7 @@ export default function Movements() {
     component_name: string;
     quantity: number;
     unit: string;
+    cost_price?: number;
   }>>([]);
   const [useRecipe, setUseRecipe] = useState(false);
   const queryClient = useQueryClient();
@@ -335,7 +336,7 @@ export default function Movements() {
             movement_type_id: data.movement_type_id,
             component_id: item.component_id,
             quantity: parseFloat(item.quantity.toString()),
-            unit_cost: parseFloat(data.unit_cost) || 0,
+            unit_cost: item.cost_price ? parseFloat(item.cost_price.toString()) : 0,
             reference_number: data.reference_number,
             notes: `${data.notes || ''} - Receta: ${selectedRecipe?.name || ''} (x${recipeMultiplier})`.trim()
           })
@@ -536,7 +537,8 @@ export default function Movements() {
                                 component_id: ingredient.component_id,
                                 component_name: ingredient.component_name || ingredient.component?.name,
                                 quantity: ingredient.quantity * recipeMultiplier,
-                                unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit'
+                                unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit',
+                                cost_price: ingredient.cost_price || ingredient.component?.cost_price || 0
                               }));
                               console.log('Items de movimiento creados:', items);
                               setMovementItems(items);
@@ -579,7 +581,8 @@ export default function Movements() {
                                 component_id: ingredient.component_id,
                                 component_name: ingredient.component_name || ingredient.component?.name,
                                 quantity: ingredient.quantity * value,
-                                unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit'
+                                unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit',
+                                cost_price: ingredient.cost_price || ingredient.component?.cost_price || 0
                               }));
                               setMovementItems(items);
                             }
