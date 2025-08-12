@@ -65,12 +65,14 @@ async function startServer() {
         const recipesRoutes = require('./routes/recipes.routes').default;
         const categoriesRoutes = require('./routes/categories.routes').default;
         const unitsRoutes = require('./routes/units.routes').default;
+        const usersRoutes = require('./routes/users.routes').default;
         app.use('/api/auth', authRoutes);
         app.use('/api/components', componentsRoutes);
         app.use('/api/movements', movementsRoutes);
         app.use('/api/recipes', recipesRoutes);
         app.use('/api/categories', categoriesRoutes);
         app.use('/api/units', unitsRoutes);
+        app.use('/api/users', usersRoutes);
         app.get('/api/movement-types', async (_req, res) => {
             try {
                 const types = await database_config_1.db.query('SELECT * FROM movement_types ORDER BY name');
@@ -79,20 +81,6 @@ async function startServer() {
             catch (error) {
                 console.error('Error:', error);
                 res.status(500).json({ error: 'Error al obtener tipos de movimiento' });
-            }
-        });
-        app.get('/api/users', async (req, res) => {
-            try {
-                const authHeader = req.headers.authorization;
-                if (!authHeader) {
-                    return res.status(401).json({ error: 'No autorizado' });
-                }
-                const users = await database_config_1.db.query('SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY username');
-                res.json({ users });
-            }
-            catch (error) {
-                console.error('Error:', error);
-                res.status(500).json({ error: 'Error al obtener usuarios' });
             }
         });
         app.get('/health', (_req, res) => {

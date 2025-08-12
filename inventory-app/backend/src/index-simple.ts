@@ -72,6 +72,7 @@ async function startServer() {
     const recipesRoutes = require('./routes/recipes.routes').default;
     const categoriesRoutes = require('./routes/categories.routes').default;
     const unitsRoutes = require('./routes/units.routes').default;
+    const usersRoutes = require('./routes/users.routes').default;
 
     app.use('/api/auth', authRoutes);
     app.use('/api/components', componentsRoutes);
@@ -79,6 +80,7 @@ async function startServer() {
     app.use('/api/recipes', recipesRoutes);
     app.use('/api/categories', categoriesRoutes);
     app.use('/api/units', unitsRoutes);
+    app.use('/api/users', usersRoutes);
 
 
     app.get('/api/movement-types', async (_req, res) => {
@@ -91,22 +93,6 @@ async function startServer() {
       }
     });
 
-    app.get('/api/users', async (req, res) => {
-      try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader) {
-          return res.status(401).json({ error: 'No autorizado' });
-        }
-
-        const users = await db.query(
-          'SELECT id, username, email, first_name, last_name, role, is_active, created_at FROM users ORDER BY username'
-        );
-        res.json({ users });
-      } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Error al obtener usuarios' });
-      }
-    });
 
     app.get('/health', (_req, res) => {
       res.json({ 
