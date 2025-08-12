@@ -5,7 +5,8 @@ import {
   createMovement,
   createReservation,
   getReservations,
-  createInvoice
+  createInvoice,
+  clearAllMovements
 } from '@/controllers/movements.controller';
 import { authenticate, authorize } from '@/middlewares/auth';
 import { validateRequest } from '@/middlewares/validation';
@@ -73,6 +74,14 @@ router.post(
   ],
   validateRequest,
   createInvoice
+);
+
+// Endpoint para limpiar todos los movimientos (solo admin)
+router.delete(
+  '/clear-all',
+  authenticate,
+  authorize('admin'),
+  clearAllMovements
 );
 
 export default router;

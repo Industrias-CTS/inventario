@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createInvoice = exports.getReservations = exports.createReservation = exports.cancelMovement = exports.getMovementStats = exports.getMovementById = exports.createMovement = exports.getMovements = void 0;
+exports.clearAllMovements = exports.createInvoice = exports.getReservations = exports.createReservation = exports.cancelMovement = exports.getMovementStats = exports.getMovementById = exports.createMovement = exports.getMovements = void 0;
 const database_config_1 = require("../config/database.config");
 const generateId = () => Math.random().toString(36).substr(2, 9);
 // Mapeo de tipos a operaciones para compatibilidad
@@ -515,4 +515,35 @@ const createInvoice = async (req, res) => {
     }
 };
 exports.createInvoice = createInvoice;
+const clearAllMovements = async (req, res) => {
+    try {
+        // Verificar que el usuario sea admin
+        const userRole = req.user?.role;
+        if (userRole !== 'admin') {
+            return res.status(403).json({ error: 'Solo los administradores pueden limpiar los movimientos' });
+        }
+        // Obtener el conteo actual de movimientos
+        const countBefore = await database_config_1.db.get('SELECT COUNT(*) as count FROM movements');
+        if (countBefore.count === 0) {
+            return res.json({
+                message: 'No hay movimientos para eliminar',
+                deleted: 0
+            });
+        }
+        // Eliminar todos los movimientos
+        await database_config_1.db.run('DELETE FROM movements');
+        // Verificar que se eliminaron
+        const countAfter = await database_config_1.db.get('SELECT COUNT(*) as count FROM movements');
+        res.json({
+            message: `Se eliminaron ${countBefore.count} movimientos exitosamente`,
+            deleted: countBefore.count,
+            remaining: countAfter.count
+        });
+    }
+    catch (error) {
+        console.error('Error al limpiar movimientos:', error);
+        res.status(500).json({ error: error.message || 'Error al limpiar movimientos' });
+    }
+};
+exports.clearAllMovements = clearAllMovements;
 //# sourceMappingURL=movements.controller.js.map

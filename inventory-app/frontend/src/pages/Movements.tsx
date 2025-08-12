@@ -36,6 +36,7 @@ import {
   Receipt,
   Delete,
   AddCircle,
+  DeleteSweep,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
@@ -91,6 +92,7 @@ export default function Movements() {
     cost_price?: number;
   }>>([]);
   const [useRecipe, setUseRecipe] = useState(false);
+  const [openClearDialog, setOpenClearDialog] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: movementsData, isLoading: movementsLoading } = useQuery({
@@ -169,6 +171,19 @@ export default function Movements() {
     onError: (error: any) => {
       console.error('Error al procesar factura:', error);
       alert(`Error al procesar factura: ${error.response?.data?.error || error.message}`);
+    },
+  });
+
+  const clearMovementsMutation = useMutation({
+    mutationFn: movementsService.clearAllMovements,
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['movements'] });
+      setOpenClearDialog(false);
+      alert(response.message || 'Movimientos eliminados exitosamente');
+    },
+    onError: (error: any) => {
+      console.error('Error al limpiar movimientos:', error);
+      alert(`Error: ${error.response?.data?.error || error.message}`);
     },
   });
 
@@ -427,6 +442,14 @@ export default function Movements() {
             onClick={() => setOpenReservationDialog(true)}
           >
             Nueva Reserva
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteSweep />}
+            onClick={() => setOpenClearDialog(true)}
+          >
+            Limpiar Todo
           </Button>
         </Box>
       </Box>
@@ -1157,6 +1180,43 @@ export default function Movements() {
             disabled={createInvoiceMutation.isPending || invoiceItems.length === 0}
           >
             Procesar Factura
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de confirmación para limpiar movimientos */}
+      <Dialog
+        open={openClearDialog}
+        onClose={() => setOpenClearDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: 'error.main' }}>
+          ⚠️ Confirmar Eliminación de Todos los Movimientos
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            Esta acción eliminará TODOS los movimientos registrados en el sistema.
+            Esta operación no se puede deshacer.
+          </Alert>
+          <Typography sx={{ mt: 2 }}>
+            ¿Está seguro que desea eliminar todos los movimientos?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setOpenClearDialog(false)}
+            color="primary"
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => clearMovementsMutation.mutate()}
+            color="error"
+            variant="contained"
+            disabled={clearMovementsMutation.isPending}
+          >
+            {clearMovementsMutation.isPending ? 'Eliminando...' : 'Eliminar Todo'}
           </Button>
         </DialogActions>
       </Dialog>

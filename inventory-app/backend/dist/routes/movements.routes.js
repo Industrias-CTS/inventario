@@ -43,5 +43,7 @@ router.post('/invoice', auth_1.authenticate, (0, auth_1.authorize)('admin', 'use
         return true;
     }),
 ], validation_1.validateRequest, movements_controller_1.createInvoice);
+// Endpoint para limpiar todos los movimientos (solo admin)
+router.delete('/clear-all', auth_1.authenticate, (0, auth_1.authorize)('admin'), movements_controller_1.clearAllMovements);
 exports.default = router;
 //# sourceMappingURL=movements.routes.js.map

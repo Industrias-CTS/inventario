@@ -120,4 +120,17 @@ export const movementsService = {
       return alternativeResponse.json();
     }
   },
+
+  async clearAllMovements(): Promise<{
+    message: string;
+    deleted: number;
+    remaining: number;
+  }> {
+    const response = await api.delete<{
+      message: string;
+      deleted: number;
+      remaining: number;
+    }>('/movements/clear-all');
+    return response.data;
+  },
 };
