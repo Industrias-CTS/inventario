@@ -29,7 +29,8 @@
       "Bash(timeout 5 npm run dev)",
       "Bash(set PORT=3000)",
       "Bash(mv:*)",
-      "Bash(test-price-update.bat)"
+      "Bash(test-price-update.bat)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }
