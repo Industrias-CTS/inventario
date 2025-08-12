@@ -20,6 +20,7 @@ const getMovements = async (req, res) => {
         m.*,
         m.type as movement_type_code,
         m.type as movement_type_name,
+        m.reference as reference_number,
         c.code as component_code,
         c.name as component_name,
         u.username,
@@ -151,6 +152,7 @@ const createMovement = async (req, res) => {
         const newMovement = await database_config_1.db.get(`SELECT 
         m.*,
         m.type as movement_type_name,
+        m.reference as reference_number,
         c.name as component_name
       FROM movements m
       JOIN components c ON m.component_id = c.id
@@ -182,6 +184,7 @@ const getMovementById = async (req, res) => {
         m.*,
         m.type as movement_type_code,
         m.type as movement_type_name,
+        m.reference as reference_number,
         c.code as component_code,
         c.name as component_name,
         u.username,

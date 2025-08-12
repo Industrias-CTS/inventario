@@ -22,6 +22,7 @@ export const getMovements = async (req: Request, res: Response) => {
         m.*,
         m.type as movement_type_code,
         m.type as movement_type_name,
+        m.reference as reference_number,
         c.code as component_code,
         c.name as component_name,
         u.username,
@@ -181,6 +182,7 @@ export const createMovement = async (req: Request, res: Response) => {
       `SELECT 
         m.*,
         m.type as movement_type_name,
+        m.reference as reference_number,
         c.name as component_name
       FROM movements m
       JOIN components c ON m.component_id = c.id
@@ -216,6 +218,7 @@ export const getMovementById = async (req: Request, res: Response) => {
         m.*,
         m.type as movement_type_code,
         m.type as movement_type_name,
+        m.reference as reference_number,
         c.code as component_code,
         c.name as component_name,
         u.username,
