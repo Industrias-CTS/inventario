@@ -23,6 +23,13 @@ export const getMovements = async (req: Request, res: Response) => {
         m.type as movement_type_code,
         m.type as movement_type_name,
         m.reference as reference_number,
+        CASE 
+          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
+          WHEN m.type IN ('salida') THEN 'OUT'
+          WHEN m.type IN ('reserva') THEN 'RESERVE'
+          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+          ELSE 'IN'
+        END as operation,
         c.code as component_code,
         c.name as component_name,
         u.username,
@@ -183,6 +190,13 @@ export const createMovement = async (req: Request, res: Response) => {
         m.*,
         m.type as movement_type_name,
         m.reference as reference_number,
+        CASE 
+          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
+          WHEN m.type IN ('salida') THEN 'OUT'
+          WHEN m.type IN ('reserva') THEN 'RESERVE'
+          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+          ELSE 'IN'
+        END as operation,
         c.name as component_name
       FROM movements m
       JOIN components c ON m.component_id = c.id
@@ -194,8 +208,7 @@ export const createMovement = async (req: Request, res: Response) => {
       res.status(201).json({
         message: 'Movimiento registrado exitosamente',
         movement: {
-          ...newMovement,
-          operation // Agregar operation para compatibilidad
+          ...newMovement
         },
         newStock,
         newReservedStock
@@ -219,6 +232,13 @@ export const getMovementById = async (req: Request, res: Response) => {
         m.type as movement_type_code,
         m.type as movement_type_name,
         m.reference as reference_number,
+        CASE 
+          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
+          WHEN m.type IN ('salida') THEN 'OUT'
+          WHEN m.type IN ('reserva') THEN 'RESERVE'
+          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+          ELSE 'IN'
+        END as operation,
         c.code as component_code,
         c.name as component_name,
         u.username,
