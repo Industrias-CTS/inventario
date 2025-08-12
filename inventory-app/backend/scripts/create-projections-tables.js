@@ -50,7 +50,7 @@ async function createProjectionsTables() {
     console.log('✅ Tabla projection_requirements creada');
     
     // Verificar las tablas creadas
-    const tables = await db.query(
+    const tables = await db.all(
       "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'projection%'"
     );
     
