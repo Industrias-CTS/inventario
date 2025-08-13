@@ -45,6 +45,7 @@ import { movementsService } from '../services/movements.service';
 import { componentsService } from '../services/components.service';
 import { movementTypesService } from '../services/movement-types.service';
 import { recipesService } from '../services/recipes.service';
+import { authService } from '../services/auth.service';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -69,6 +70,11 @@ function TabPanel(props: TabPanelProps) {
 }
 
 export default function Movements() {
+  // Obtener usuario actual para verificar permisos
+  const currentUser = authService.getCurrentUser();
+  const isViewer = currentUser?.role === 'viewer';
+  const isAdmin = currentUser?.role === 'admin';
+  
   const [tabValue, setTabValue] = useState(0);
   const [openMovementDialog, setOpenMovementDialog] = useState(false);
   const [openReservationDialog, setOpenReservationDialog] = useState(false);
@@ -421,46 +427,57 @@ export default function Movements() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Movimientos de Inventario</Typography>
-        <Box display="flex" gap={2}>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => setOpenMovementDialog(true)}
-          >
-            Nuevo Movimiento
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<Receipt />}
-            onClick={() => setOpenInvoiceDialog(true)}
-          >
-            Nueva Factura
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<BookmarkAdd />}
-            onClick={() => setOpenReservationDialog(true)}
-          >
-            Nueva Reserva
-          </Button>
-          <Button
-            variant="outlined"
-            color="error"
-            startIcon={<DeleteSweep />}
-            onClick={() => setOpenClearDialog(true)}
-          >
-            Limpiar Todo
-          </Button>
-        </Box>
+        {!isViewer && (
+          <Box display="flex" gap={2}>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setOpenMovementDialog(true)}
+            >
+              Nuevo Movimiento
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Receipt />}
+              onClick={() => setOpenInvoiceDialog(true)}
+            >
+              Nueva Factura
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<BookmarkAdd />}
+              onClick={() => setOpenReservationDialog(true)}
+            >
+              Nueva Reserva
+            </Button>
+            {isAdmin && (
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<DeleteSweep />}
+                onClick={() => setOpenClearDialog(true)}
+              >
+                Limpiar Todo
+              </Button>
+            )}
+          </Box>
+        )}
       </Box>
 
       <Paper sx={{ width: '100%' }}>
-        <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
-          <Tab label="Movimientos" />
-          <Tab label="Reservas" />
-        </Tabs>
+        {isViewer ? (
+          <Typography variant="h6" sx={{ p: 2 }}>
+            Historial de Movimientos
+          </Typography>
+        ) : (
+          <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
+            <Tab label="Movimientos" />
+            <Tab label="Reservas" />
+          </Tabs>
+        )}
 
-        <TabPanel value={tabValue} index={0}>
+        {!isViewer ? (
+          <TabPanel value={tabValue} index={0}>
           <DataGrid
             rows={movementsData?.movements || []}
             columns={movementColumns}
@@ -481,9 +498,9 @@ export default function Movements() {
               },
             }}
           />
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={1}>
+          </TabPanel>
+        ) : (
+          <Box sx={{ py: 3 }}>
           <DataGrid
             rows={reservationsData?.reservations || []}
             columns={reservationColumns}
@@ -504,7 +521,33 @@ export default function Movements() {
               },
             }}
           />
-        </TabPanel>
+          </Box>
+        )}
+
+        {!isViewer && (
+          <TabPanel value={tabValue} index={1}>
+            <DataGrid
+              rows={reservationsData?.reservations || []}
+              columns={reservationColumns}
+              loading={reservationsLoading}
+              autoHeight
+              pageSizeOptions={[10, 25, 50]}
+              initialState={{
+                pagination: {
+                  paginationModel: { pageSize: 25 },
+                },
+                sorting: {
+                  sortModel: [{ field: 'reserved_at', sort: 'desc' }],
+                },
+              }}
+              sx={{
+                '& .MuiDataGrid-cell:hover': {
+                  color: 'primary.main',
+                },
+              }}
+            />
+          </TabPanel>
+        )}
       </Paper>
 
       {/* Dialog para nuevo movimiento */}
