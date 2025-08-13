@@ -31,7 +31,12 @@
       "Bash(mv:*)",
       "Bash(test-price-update.bat)",
       "Bash(grep:*)",
-      "Bash(npm run start:*)"
+      "Bash(npm run start:*)",
+      "Bash(for file in build/static/js/*.js)",
+      "Bash(do echo \"Checking $file:\")",
+      "Bash(done)",
+      "Bash(npm cache clean:*)",
+      "Bash(CI=false npm run build)"
     ],
     "deny": []
   }
