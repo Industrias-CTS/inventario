@@ -459,6 +459,7 @@ export default function Components() {
                   fullWidth
                   label="Precio de Costo"
                   type="number"
+                  inputProps={{ step: '0.01' }}
                   {...register('cost_price', { min: 0 })}
                 />
               </Grid>
