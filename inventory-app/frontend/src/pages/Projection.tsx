@@ -452,6 +452,241 @@ export default function Projection() {
     };
   };
 
+  const generateSavedProjectionPDF = (projection: ProjectionType) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const creationDate = new Date(projection.created_at).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long', 
+      day: 'numeric'
+    });
+
+    const createdBy = projection.username || 
+                     `${projection.first_name || ''} ${projection.last_name || ''}`.trim() || 
+                     'Usuario desconocido';
+
+    const recipesHtml = projection.recipes?.map((recipe) => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ddd;">${recipe.recipe_code || '-'}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${recipe.recipe_name || '-'}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${recipe.quantity}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="3" style="padding: 8px; text-align: center; color: #666;">No hay recetas</td></tr>';
+
+    const componentsHtml = projection.requirements?.map(req => `
+      <tr style="background-color: ${req.is_available ? '#f8f9fa' : '#fff3cd'};">
+        <td style="padding: 8px; border: 1px solid #ddd;">
+          <div style="font-weight: bold;">${req.component_name}</div>
+          <div style="font-size: 12px; color: #666;">${req.component_code}</div>
+        </td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${req.required_quantity} ${req.unit_symbol || ''}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${req.available_quantity} ${req.unit_symbol || ''}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; ${req.shortage > 0 ? 'color: #dc3545; font-weight: bold;' : 'color: #28a745; font-weight: bold;'}">${req.shortage > 0 ? req.shortage : 'Completo'}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+          <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; background-color: ${req.is_available ? '#28a745' : '#dc3545'};">
+            ${req.is_available ? 'Completo' : (req.shortage > 0 ? `Falta ${req.shortage}` : 'Completo')}
+          </span>
+        </td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="padding: 8px; text-align: center; color: #666;">No hay requerimientos</td></tr>';
+
+    const totalAvailable = projection.requirements?.filter(req => req.is_available).length || 0;
+    const totalRequirements = projection.requirements?.length || 0;
+    const totalMissing = totalRequirements - totalAvailable;
+    const isFeasible = projection.is_feasible;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Proyección: ${projection.name}</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              margin: 0;
+              padding: 20px;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              border-bottom: 2px solid #007bff;
+              padding-bottom: 20px;
+            }
+            .header h1 {
+              margin: 0;
+              color: #007bff;
+              font-size: 28px;
+            }
+            .header .subtitle {
+              color: #666;
+              font-size: 16px;
+              margin: 10px 0;
+            }
+            .header .date {
+              color: #666;
+              font-size: 14px;
+              margin-top: 10px;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 8px 16px;
+              border-radius: 20px;
+              font-weight: bold;
+              font-size: 14px;
+              margin: 10px 0;
+              color: white;
+              background-color: ${isFeasible ? '#28a745' : '#ffc107'};
+            }
+            .metadata {
+              background-color: #f8f9fa;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 30px;
+              border-left: 4px solid #17a2b8;
+            }
+            .section {
+              margin-bottom: 40px;
+            }
+            .section h2 {
+              color: #007bff;
+              border-bottom: 1px solid #eee;
+              padding-bottom: 10px;
+              margin-bottom: 20px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 20px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            th {
+              background-color: #007bff;
+              color: white;
+              padding: 12px 8px;
+              text-align: left;
+              font-weight: bold;
+            }
+            th[style*="text-align: center"] {
+              text-align: center;
+            }
+            th[style*="text-align: right"] {
+              text-align: right;
+            }
+            td {
+              padding: 8px;
+              border: 1px solid #ddd;
+            }
+            tr:nth-child(even) {
+              background-color: #f8f9fa;
+            }
+            .summary {
+              background-color: #f8f9fa;
+              padding: 20px;
+              border-radius: 8px;
+              border-left: 4px solid #007bff;
+            }
+            @media print {
+              body { margin: 0; padding: 15px; }
+              .section { page-break-inside: avoid; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>📊 ${projection.name}</h1>
+            <div class="subtitle">Proyección de Producción</div>
+            <div class="date">PDF generado el ${dateStr}</div>
+            <div class="status-badge">
+              ${isFeasible ? '✅ Factible - Se puede producir' : '⚠️ No factible - Faltan componentes'}
+            </div>
+          </div>
+
+          <div class="metadata">
+            <h3>📋 Información de la Proyección</h3>
+            <ul style="margin: 0; list-style: none; padding: 0;">
+              <li style="margin-bottom: 8px;"><strong>Nombre:</strong> ${projection.name}</li>
+              ${projection.description ? `<li style="margin-bottom: 8px;"><strong>Descripción:</strong> ${projection.description}</li>` : ''}
+              <li style="margin-bottom: 8px;"><strong>Creada por:</strong> ${createdBy}</li>
+              <li style="margin-bottom: 8px;"><strong>Fecha de creación:</strong> ${creationDate}</li>
+              <li><strong>Estado:</strong> ${isFeasible ? 'Factible' : 'Con faltantes'}</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <h2>🔧 Recetas (${projection.recipes?.length || 0})</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre de la Receta</th>
+                  <th style="text-align: center;">Cantidad a Producir</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${recipesHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="section">
+            <h2>📦 Requerimientos de Componentes (${projection.requirements?.length || 0})</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Componente</th>
+                  <th style="text-align: right;">Cantidad Requerida</th>
+                  <th style="text-align: right;">Cantidad Disponible</th>
+                  <th style="text-align: right;">Faltante</th>
+                  <th style="text-align: center;">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${componentsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="summary">
+            <h3>📊 Resumen Ejecutivo</h3>
+            <ul>
+              <li><strong>Total de recetas:</strong> ${projection.recipes?.length || 0}</li>
+              <li><strong>Total de componentes requeridos:</strong> ${totalRequirements}</li>
+              <li><strong>Componentes disponibles:</strong> ${totalAvailable}</li>
+              <li><strong>Componentes faltantes:</strong> ${totalMissing}</li>
+              <li><strong>Estado general:</strong> ${isFeasible ? '✅ Factible - Se puede producir' : '⚠️ No factible - Faltan componentes'}</li>
+              <li><strong>Porcentaje de disponibilidad:</strong> ${totalRequirements > 0 ? Math.round((totalAvailable / totalRequirements) * 100) : 0}%</li>
+            </ul>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    // Esperar a que se cargue el contenido antes de abrir el diálogo de impresión
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    };
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -792,6 +1027,14 @@ export default function Projection() {
                           </IconButton>
                           <IconButton
                             size="small"
+                            color="secondary"
+                            onClick={() => generateSavedProjectionPDF(projection)}
+                            title="Descargar PDF"
+                          >
+                            <GetAppIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
                             color="error"
                             onClick={() => handleDeleteProjection(projection.id)}
                             title="Eliminar proyección"
@@ -954,6 +1197,16 @@ export default function Projection() {
           <Button onClick={() => setOpenDetailDialog(false)}>
             Cerrar
           </Button>
+          {selectedProjection && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<GetAppIcon />}
+              onClick={() => generateSavedProjectionPDF(selectedProjection)}
+            >
+              Descargar PDF
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>
