@@ -81,224 +81,290 @@ export default function Reports() {
 
   const generateMovementsPDF = async (data: any) => {
     try {
-      console.log('=== INICIANDO GENERACIÓN PDF MOVIMIENTOS ===');
-      console.log('Datos recibidos:', JSON.stringify(data, null, 2));
-      
       if (!data || !data.movements || !Array.isArray(data.movements)) {
-        console.error('Datos inválidos:', data);
         throw new Error('Datos de movimientos inválidos o vacíos');
       }
 
-      console.log('Creando documento PDF...');
       const doc = new jsPDF();
       
-      console.log('Agregando título...');
+      // Header principal
       doc.setFontSize(20);
-      doc.text('Reporte de Movimientos', 14, 20);
+      doc.setTextColor(40, 116, 166);
+      doc.text('📊 Reporte de Movimientos', 14, 25);
       
-      console.log('Agregando información básica...');
-      doc.setFontSize(12);
-      doc.text('Fecha de generación: ' + new Date().toLocaleDateString(), 14, 40);
-      doc.text(`Total de movimientos: ${data.movements.length}`, 14, 50);
+      // Información del reporte
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
+      doc.text(`Generado: ${today}`, 14, 35);
+      doc.text(`Total de movimientos: ${data.movements.length}`, 14, 40);
       
-      if (data.movements.length === 0) {
-        doc.text('No se encontraron movimientos.', 14, 70);
-      } else {
-        // Crear tabla simple sin autoTable primero
-        console.log('Agregando datos de movimientos...');
-        let yPosition = 70;
-        
-        // Headers
-        doc.setFontSize(10);
-        doc.text('Fecha', 14, yPosition);
-        doc.text('Tipo', 50, yPosition);
-        doc.text('Componente', 80, yPosition);
-        doc.text('Cantidad', 140, yPosition);
-        
-        yPosition += 10;
-        
-        // Solo mostrar los primeros 10 movimientos para la prueba
-        const movementsToShow = data.movements.slice(0, 10);
-        
-        movementsToShow.forEach((m: any, index: number) => {
-          if (yPosition > 280) return; // No exceder la página
-          
-          const fecha = m.created_at ? new Date(m.created_at).toLocaleDateString() : '-';
-          const tipo = m.movement_type || '-';
-          const componente = (m.component_name || '-').substring(0, 20); // Truncar
-          const cantidad = (m.quantity || 0).toString();
-          
-          doc.text(fecha, 14, yPosition);
-          doc.text(tipo, 50, yPosition);
-          doc.text(componente, 80, yPosition);
-          doc.text(cantidad, 140, yPosition);
-          
-          yPosition += 8;
-        });
+      // Filtros aplicados
+      if (startDate && endDate) {
+        doc.text(`Período: ${format(startDate, 'dd/MM/yyyy')} - ${format(endDate, 'dd/MM/yyyy')}`, 14, 45);
+      }
+      if (movementType !== 'all') {
+        doc.text(`Tipo: ${movementType}`, 14, 50);
       }
       
-      console.log('Guardando PDF...');
-      const filename = `movimientos_${Date.now()}.pdf`;
+      if (data.movements.length === 0) {
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text('No se encontraron movimientos con los filtros aplicados.', 14, 70);
+      } else {
+        // Preparar datos para la tabla
+        const tableData = data.movements.map((m: any) => [
+          m.created_at ? format(new Date(m.created_at), 'dd/MM/yyyy') : '-',
+          m.movement_type || '-',
+          m.component_name || '-',
+          (m.quantity || 0).toString(),
+          m.unit_cost ? `$${m.unit_cost.toFixed(2)}` : '-',
+          m.total_cost ? `$${m.total_cost.toFixed(2)}` : '-',
+          m.reference || '-'
+        ]);
+        
+        doc.autoTable({
+          head: [['Fecha', 'Tipo', 'Componente', 'Cantidad', 'Costo Unit.', 'Costo Total', 'Referencia']],
+          body: tableData,
+          startY: 60,
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [40, 116, 166], textColor: 255 },
+          alternateRowStyles: { fillColor: [245, 245, 245] },
+          columnStyles: {
+            0: { cellWidth: 22 },
+            1: { cellWidth: 25 },
+            2: { cellWidth: 45 },
+            3: { cellWidth: 20, halign: 'right' },
+            4: { cellWidth: 22, halign: 'right' },
+            5: { cellWidth: 22, halign: 'right' },
+            6: { cellWidth: 30 },
+          },
+        });
+        
+        // Resumen
+        const totalCost = data.movements.reduce((sum: number, m: any) => sum + (m.total_cost || 0), 0);
+        const yPos = (doc as any).lastAutoTable.finalY + 10;
+        
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`💰 Valor total de movimientos: $${totalCost.toFixed(2)}`, 14, yPos);
+      }
+      
+      // Footer
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('Sistema de Inventario - Industrias CTS', 14, pageHeight - 10);
+      
+      const filename = `movimientos_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`;
       doc.save(filename);
-      console.log('=== PDF GENERADO EXITOSAMENTE ===');
       
     } catch (error: any) {
-      console.error('=== ERROR EN GENERACIÓN PDF ===');
-      console.error('Error completo:', error);
-      console.error('Stack trace:', error.stack);
       throw new Error(`Error generando PDF de movimientos: ${error.message || error}`);
     }
   };
 
   const generateInventoryPDF = async (data: any) => {
     try {
-      console.log('=== INICIANDO GENERACIÓN PDF INVENTARIO ===');
-      console.log('Datos recibidos:', data);
-      
       if (!data || !data.inventory || !Array.isArray(data.inventory)) {
-        console.error('Datos inválidos:', data);
         throw new Error('Datos de inventario inválidos o vacíos');
       }
 
-      console.log('Creando documento PDF...');
       const doc = new jsPDF();
       
-      console.log('Agregando título...');
+      // Header principal  
       doc.setFontSize(20);
-      doc.text('Reporte de Inventario', 14, 20);
+      doc.setTextColor(34, 139, 34);
+      doc.text('📦 Reporte de Inventario', 14, 25);
       
-      console.log('Agregando información básica...');
-      doc.setFontSize(12);
-      doc.text('Fecha de generación: ' + new Date().toLocaleDateString(), 14, 40);
-      doc.text(`Total de componentes: ${data.inventory.length}`, 14, 50);
+      // Información del reporte
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
+      doc.text(`Generado: ${today}`, 14, 35);
+      doc.text(`Total de componentes: ${data.inventory.length}`, 14, 40);
+      
+      // Estadísticas
+      const totalValue = data.inventory.reduce((sum: number, item: any) => 
+        sum + ((item.current_stock || 0) * (item.cost_price || 0)), 0);
+      const lowStockCount = data.inventory.filter((item: any) => 
+        (item.current_stock || 0) <= (item.min_stock || 0)).length;
+      
+      doc.text(`Valor total del inventario: $${totalValue.toFixed(2)}`, 14, 45);
+      doc.text(`Componentes con stock bajo: ${lowStockCount}`, 14, 50);
       
       if (data.inventory.length === 0) {
-        doc.text('No se encontraron componentes.', 14, 70);
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text('No se encontraron componentes en el inventario.', 14, 70);
       } else {
-        // Crear lista simple
-        console.log('Agregando datos de inventario...');
-        let yPosition = 70;
-        
-        // Headers
-        doc.setFontSize(10);
-        doc.text('Código', 14, yPosition);
-        doc.text('Nombre', 60, yPosition);
-        doc.text('Stock', 140, yPosition);
-        doc.text('Unidad', 170, yPosition);
-        
-        yPosition += 10;
-        
-        // Solo mostrar los primeros 15 componentes para la prueba
-        const itemsToShow = data.inventory.slice(0, 15);
-        
-        itemsToShow.forEach((item: any, index: number) => {
-          if (yPosition > 280) return; // No exceder la página
-          
-          const codigo = (item.code || '-').substring(0, 15);
-          const nombre = (item.name || '-').substring(0, 25);
-          const stock = (item.current_stock || 0).toString();
-          const unidad = item.unit_symbol || 'unit';
-          
-          doc.text(codigo, 14, yPosition);
-          doc.text(nombre, 60, yPosition);
-          doc.text(stock, 140, yPosition);
-          doc.text(unidad, 170, yPosition);
-          
-          yPosition += 8;
+        // Preparar datos para la tabla
+        const tableData = data.inventory.map((item: any) => {
+          const stockStatus = (item.current_stock || 0) <= (item.min_stock || 0) ? '⚠️' : '✅';
+          return [
+            item.code || '-',
+            item.name || '-',
+            item.category_name || '-',
+            (item.current_stock || 0).toString(),
+            (item.min_stock || 0).toString(),
+            (item.reserved_stock || 0).toString(),
+            item.unit_symbol || 'unit',
+            `$${(item.cost_price || 0).toFixed(2)}`,
+            stockStatus
+          ];
         });
         
-        if (data.inventory.length > 15) {
-          doc.text(`... y ${data.inventory.length - 15} componentes más`, 14, yPosition + 10);
-        }
+        doc.autoTable({
+          head: [['Código', 'Nombre', 'Categoría', 'Stock', 'Mín.', 'Reserv.', 'Unidad', 'Costo', 'Estado']],
+          body: tableData,
+          startY: 60,
+          styles: { fontSize: 7, cellPadding: 1.5 },
+          headStyles: { fillColor: [34, 139, 34], textColor: 255 },
+          alternateRowStyles: { fillColor: [245, 245, 245] },
+          columnStyles: {
+            0: { cellWidth: 22 },
+            1: { cellWidth: 40 },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 15, halign: 'right' },
+            4: { cellWidth: 15, halign: 'right' },
+            5: { cellWidth: 15, halign: 'right' },
+            6: { cellWidth: 15 },
+            7: { cellWidth: 20, halign: 'right' },
+            8: { cellWidth: 15, halign: 'center' },
+          },
+        });
+        
+        // Resumen en la parte inferior
+        const yPos = (doc as any).lastAutoTable.finalY + 10;
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`📊 Resumen del Inventario`, 14, yPos);
+        doc.setFontSize(10);
+        doc.text(`• Total de componentes: ${data.inventory.length}`, 14, yPos + 10);
+        doc.text(`• Valor total: $${totalValue.toFixed(2)}`, 14, yPos + 15);
+        doc.text(`• Componentes con stock bajo: ${lowStockCount}`, 14, yPos + 20);
       }
       
-      console.log('Guardando PDF...');
-      const filename = `inventario_${Date.now()}.pdf`;
+      // Footer
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('Sistema de Inventario - Industrias CTS', 14, pageHeight - 10);
+      
+      const filename = `inventario_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`;
       doc.save(filename);
-      console.log('=== PDF INVENTARIO GENERADO EXITOSAMENTE ===');
       
     } catch (error: any) {
-      console.error('=== ERROR EN GENERACIÓN PDF INVENTARIO ===');
-      console.error('Error completo:', error);
       throw new Error(`Error generando PDF de inventario: ${error.message || error}`);
     }
   };
 
   const generateLowStockPDF = async (data: any) => {
     try {
-      console.log('Generando PDF de stock bajo con datos:', data);
-      
       if (!data || !data.inventory || !Array.isArray(data.inventory)) {
         throw new Error('Datos de inventario inválidos o vacíos');
       }
 
-      const doc = new jsPDF();
-      
-      // Título
-      doc.setFontSize(20);
-      doc.text('Reporte de Stock Bajo', 14, 20);
-      
-      // Información
-      doc.setFontSize(10);
-      const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
-      doc.text(`Generado: ${today}`, 14, 30);
-      
       // Filtrar componentes con stock bajo
       const lowStockItems = data.inventory.filter((item: any) => 
         (item.current_stock || 0) <= (item.min_stock || 0)
       );
+
+      const doc = new jsPDF();
       
-      doc.text(`Componentes con stock bajo: ${lowStockItems.length}`, 14, 36);
+      // Header principal
+      doc.setFontSize(20);
+      doc.setTextColor(220, 53, 69);
+      doc.text('⚠️ Reporte de Stock Bajo', 14, 25);
+      
+      // Información del reporte
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
+      doc.text(`Generado: ${today}`, 14, 35);
+      doc.text(`Componentes con stock bajo: ${lowStockItems.length}`, 14, 40);
+      doc.text(`Total de componentes analizados: ${data.inventory.length}`, 14, 45);
       
       if (lowStockItems.length === 0) {
-        doc.text('¡Excelente! No hay componentes con stock bajo.', 14, 50);
+        doc.setFontSize(16);
+        doc.setTextColor(34, 139, 34);
+        doc.text('✅ ¡Excelente! No hay componentes con stock bajo.', 14, 70);
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text('Todos los componentes están por encima del stock mínimo establecido.', 14, 85);
       } else {
+        // Calcular valor total en riesgo
+        const totalValueAtRisk = lowStockItems.reduce((sum: number, item: any) => {
+          const shortage = Math.max(0, (item.min_stock || 0) - (item.current_stock || 0));
+          return sum + (shortage * (item.cost_price || 0));
+        }, 0);
+        
+        doc.text(`Valor total en riesgo: $${totalValueAtRisk.toFixed(2)}`, 14, 50);
+        
         // Tabla
-        const tableData = lowStockItems.map((item: any) => [
-          item.code || '-',
-          item.name || '-',
-          item.category_name || '-',
-          (item.current_stock || 0).toString(),
-          (item.min_stock || 0).toString(),
-          Math.max(0, (item.min_stock || 0) - (item.current_stock || 0)).toString(),
-          item.unit_symbol || 'unit',
-          `$${(item.cost_price || 0).toFixed(2)}`
-        ]);
+        const tableData = lowStockItems.map((item: any) => {
+          const shortage = Math.max(0, (item.min_stock || 0) - (item.current_stock || 0));
+          const priorityLevel = shortage > 0 ? 'CRÍTICO' : 'BAJO';
+          return [
+            item.code || '-',
+            item.name || '-',
+            item.category_name || '-',
+            (item.current_stock || 0).toString(),
+            (item.min_stock || 0).toString(),
+            shortage.toString(),
+            item.unit_symbol || 'unit',
+            `$${(item.cost_price || 0).toFixed(2)}`,
+            priorityLevel
+          ];
+        });
         
         doc.autoTable({
-          head: [['Código', 'Nombre', 'Categoría', 'Stock Actual', 'Stock Mínimo', 'Faltante', 'Unidad', 'Costo Unit.']],
+          head: [['Código', 'Nombre', 'Categoría', 'Stock', 'Mínimo', 'Faltante', 'Unidad', 'Costo', 'Prioridad']],
           body: tableData,
-          startY: 45,
-          styles: { fontSize: 9, cellPadding: 2 },
-          headStyles: { fillColor: [239, 68, 68] },
+          startY: 60,
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [220, 53, 69], textColor: 255 },
+          alternateRowStyles: { fillColor: [255, 245, 245] },
           columnStyles: {
-            0: { cellWidth: 25 },
-            1: { cellWidth: 50 },
-            2: { cellWidth: 30 },
-            3: { cellWidth: 22, halign: 'right' },
-            4: { cellWidth: 22, halign: 'right' },
-            5: { cellWidth: 20, halign: 'right' },
-            6: { cellWidth: 18 },
-            7: { cellWidth: 22, halign: 'right' },
+            0: { cellWidth: 20 },
+            1: { cellWidth: 40 },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 18, halign: 'right' },
+            4: { cellWidth: 18, halign: 'right' },
+            5: { cellWidth: 18, halign: 'right' },
+            6: { cellWidth: 15 },
+            7: { cellWidth: 20, halign: 'right' },
+            8: { cellWidth: 20, halign: 'center' },
           },
         });
+        
+        // Recomendaciones
+        const yPos = (doc as any).lastAutoTable.finalY + 15;
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text('📋 Recomendaciones:', 14, yPos);
+        doc.setFontSize(10);
+        doc.text('• Revisar proveedores para componentes críticos', 14, yPos + 10);
+        doc.text('• Programar reabastecimiento urgente', 14, yPos + 15);
+        doc.text('• Considerar ajustar stocks mínimos', 14, yPos + 20);
       }
       
-      // Guardar
+      // Footer
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('Sistema de Inventario - Industrias CTS', 14, pageHeight - 10);
+      
       const filename = `stock_bajo_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`;
-      console.log('Guardando PDF:', filename);
       doc.save(filename);
       
     } catch (error: any) {
-      console.error('Error en generateLowStockPDF:', error);
       throw new Error(`Error generando PDF de stock bajo: ${error.message || error}`);
     }
   };
 
   const generateReservationsPDF = async () => {
     try {
-      console.log('Generando PDF de reservas');
-      
       // Obtener datos de reservas desde el inventario (componentes con reserved_stock > 0)
       const response = await api.get('/reports/inventory');
       const inventoryData = response.data;
@@ -312,94 +378,110 @@ export default function Reports() {
         (item.reserved_stock || 0) > 0
       );
       
-      console.log('Reservas encontradas:', reservations.length);
-      
       const doc = new jsPDF();
       
-      // Título
+      // Header principal
       doc.setFontSize(20);
-      doc.text('Reporte de Reservas', 14, 20);
+      doc.setTextColor(79, 70, 229);
+      doc.text('🔖 Reporte de Reservas', 14, 25);
       
-      // Información
+      // Información del reporte
       doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
       const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
-      doc.text(`Generado: ${today}`, 14, 30);
-      doc.text(`Total de componentes con reservas: ${reservations.length}`, 14, 36);
+      doc.text(`Generado: ${today}`, 14, 35);
+      doc.text(`Componentes con reservas: ${reservations.length}`, 14, 40);
+      
+      // Calcular estadísticas
+      const totalReserved = reservations.reduce((sum: number, item: any) => 
+        sum + (item.reserved_stock || 0), 0);
+      const totalValueReserved = reservations.reduce((sum: number, item: any) => 
+        sum + ((item.reserved_stock || 0) * (item.cost_price || 0)), 0);
+      
+      doc.text(`Total de unidades reservadas: ${totalReserved}`, 14, 45);
+      doc.text(`Valor total reservado: $${totalValueReserved.toFixed(2)}`, 14, 50);
       
       if (reservations.length === 0) {
-        doc.text('No hay componentes con stock reservado actualmente.', 14, 50);
+        doc.setFontSize(16);
+        doc.setTextColor(34, 139, 34);
+        doc.text('📋 No hay componentes con stock reservado actualmente.', 14, 70);
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text('Todas las unidades del inventario están disponibles para uso.', 14, 85);
       } else {
         // Tabla
-        const tableData = reservations.map((item: any) => [
-          item.code || '-',
-          item.name || '-',
-          (item.current_stock || 0).toString(),
-          (item.reserved_stock || 0).toString(),
-          (item.available_stock || 0).toString(),
-          item.unit_symbol || 'unit'
-        ]);
+        const tableData = reservations.map((item: any) => {
+          const availableStock = (item.current_stock || 0) - (item.reserved_stock || 0);
+          const reservationPercent = ((item.reserved_stock || 0) / (item.current_stock || 1) * 100).toFixed(1);
+          return [
+            item.code || '-',
+            item.name || '-',
+            item.category_name || '-',
+            (item.current_stock || 0).toString(),
+            (item.reserved_stock || 0).toString(),
+            availableStock.toString(),
+            `${reservationPercent}%`,
+            item.unit_symbol || 'unit',
+            `$${(item.cost_price || 0).toFixed(2)}`
+          ];
+        });
         
         doc.autoTable({
-          head: [['Código', 'Componente', 'Stock Total', 'Reservado', 'Disponible', 'Unidad']],
+          head: [['Código', 'Componente', 'Categoría', 'Total', 'Reservado', 'Disponible', '% Reserv.', 'Unidad', 'Costo']],
           body: tableData,
-          startY: 45,
-          styles: { fontSize: 9, cellPadding: 3 },
-          headStyles: { fillColor: [79, 70, 229] },
+          startY: 60,
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+          alternateRowStyles: { fillColor: [245, 245, 255] },
           columnStyles: {
-            0: { cellWidth: 30 },
-            1: { cellWidth: 60 },
-            2: { cellWidth: 25, halign: 'right' },
-            3: { cellWidth: 25, halign: 'right' },
-            4: { cellWidth: 25, halign: 'right' },
-            5: { cellWidth: 20 },
+            0: { cellWidth: 20 },
+            1: { cellWidth: 40 },
+            2: { cellWidth: 25 },
+            3: { cellWidth: 18, halign: 'right' },
+            4: { cellWidth: 18, halign: 'right' },
+            5: { cellWidth: 18, halign: 'right' },
+            6: { cellWidth: 20, halign: 'right' },
+            7: { cellWidth: 15 },
+            8: { cellWidth: 20, halign: 'right' },
           },
         });
+        
+        // Resumen
+        const yPos = (doc as any).lastAutoTable.finalY + 15;
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text('📊 Resumen de Reservas:', 14, yPos);
+        doc.setFontSize(10);
+        doc.text(`• Total de componentes con reservas: ${reservations.length}`, 14, yPos + 10);
+        doc.text(`• Total de unidades reservadas: ${totalReserved}`, 14, yPos + 15);
+        doc.text(`• Valor total reservado: $${totalValueReserved.toFixed(2)}`, 14, yPos + 20);
+        
+        // Recomendaciones
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text('💡 Revisar regularmente las reservas para liberar stock no utilizado', 14, yPos + 30);
       }
       
-      // Guardar
+      // Footer
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('Sistema de Inventario - Industrias CTS', 14, pageHeight - 10);
+      
       const filename = `reservas_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`;
-      console.log('Guardando PDF:', filename);
       doc.save(filename);
       
     } catch (error: any) {
-      console.error('Error en generateReservationsPDF:', error);
       throw new Error(`Error generando PDF de reservas: ${error.message || error}`);
     }
   };
 
-  // Función de prueba simple para verificar jsPDF
-  const generateTestPDF = () => {
-    try {
-      console.log('Generando PDF de prueba...');
-      const doc = new jsPDF();
-      
-      doc.setFontSize(20);
-      doc.text('PDF de Prueba', 20, 20);
-      
-      doc.setFontSize(12);
-      doc.text('Este es un PDF de prueba para verificar que jsPDF funciona correctamente.', 20, 40);
-      doc.text('Si puedes ver este texto, la librería funciona bien.', 20, 50);
-      
-      const filename = `test_${Date.now()}.pdf`;
-      console.log('Guardando PDF de prueba:', filename);
-      doc.save(filename);
-      
-      console.log('PDF de prueba generado exitosamente');
-    } catch (error: any) {
-      console.error('Error en PDF de prueba:', error);
-    }
-  };
 
   const downloadReport = async (report: ReportCard) => {
     try {
       setLoading(report.title);
       setError(null);
 
-      // Agregar botón de prueba temporal
-      if (report.type === 'inventory') {
-        console.log('Generando PDF de prueba primero...');
-        generateTestPDF();
-      }
 
       switch (report.type) {
         case 'movements':
