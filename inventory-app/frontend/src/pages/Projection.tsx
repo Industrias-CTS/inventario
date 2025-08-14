@@ -924,15 +924,15 @@ export default function Projection() {
                                 {req.is_available ? (
                                   <Chip
                                     icon={<CheckCircleIcon />}
-                                    label="OK"
+                                    label="Completo"
                                     color="success"
                                     size="small"
                                   />
                                 ) : (
                                   <Chip
                                     icon={<WarningIcon />}
-                                    label={`Falta ${req.shortage}`}
-                                    color="error"
+                                    label={req.shortage > 0 ? `Falta ${req.shortage}` : "Completo"}
+                                    color={req.shortage > 0 ? "error" : "success"}
                                     size="small"
                                   />
                                 )}
