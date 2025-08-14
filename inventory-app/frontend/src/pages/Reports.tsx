@@ -23,7 +23,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import api from '../services/api';
 
 // Extender jsPDF con autoTable
@@ -123,7 +123,7 @@ export default function Reports() {
           m.reference || '-'
         ]);
         
-        doc.autoTable({
+        autoTable(doc, {
           head: [['Fecha', 'Tipo', 'Componente', 'Cantidad', 'Costo Unit.', 'Costo Total', 'Referencia']],
           body: tableData,
           startY: 60,
@@ -143,7 +143,7 @@ export default function Reports() {
         
         // Resumen
         const totalCost = data.movements.reduce((sum: number, m: any) => sum + (m.total_cost || 0), 0);
-        const yPos = (doc as any).lastAutoTable.finalY + 10;
+        const yPos = (doc as any).lastAutoTable?.finalY + 10 || 150;
         
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
@@ -214,7 +214,7 @@ export default function Reports() {
           ];
         });
         
-        doc.autoTable({
+        autoTable(doc, {
           head: [['Código', 'Nombre', 'Categoría', 'Stock', 'Mín.', 'Reserv.', 'Unidad', 'Costo', 'Estado']],
           body: tableData,
           startY: 60,
@@ -235,7 +235,7 @@ export default function Reports() {
         });
         
         // Resumen en la parte inferior
-        const yPos = (doc as any).lastAutoTable.finalY + 10;
+        const yPos = (doc as any).lastAutoTable?.finalY + 10 || 150;
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
         doc.text(`📊 Resumen del Inventario`, 14, yPos);
@@ -318,7 +318,7 @@ export default function Reports() {
           ];
         });
         
-        doc.autoTable({
+        autoTable(doc, {
           head: [['Código', 'Nombre', 'Categoría', 'Stock', 'Mínimo', 'Faltante', 'Unidad', 'Costo', 'Prioridad']],
           body: tableData,
           startY: 60,
@@ -339,7 +339,7 @@ export default function Reports() {
         });
         
         // Recomendaciones
-        const yPos = (doc as any).lastAutoTable.finalY + 15;
+        const yPos = (doc as any).lastAutoTable?.finalY + 15 || 150;
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
         doc.text('📋 Recomendaciones:', 14, yPos);
@@ -426,7 +426,7 @@ export default function Reports() {
           ];
         });
         
-        doc.autoTable({
+        autoTable(doc, {
           head: [['Código', 'Componente', 'Categoría', 'Total', 'Reservado', 'Disponible', '% Reserv.', 'Unidad', 'Costo']],
           body: tableData,
           startY: 60,
@@ -447,7 +447,7 @@ export default function Reports() {
         });
         
         // Resumen
-        const yPos = (doc as any).lastAutoTable.finalY + 15;
+        const yPos = (doc as any).lastAutoTable?.finalY + 15 || 150;
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
         doc.text('📊 Resumen de Reservas:', 14, yPos);
