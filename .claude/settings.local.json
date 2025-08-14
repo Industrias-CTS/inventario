@@ -37,7 +37,8 @@
       "Bash(done)",
       "Bash(npm cache clean:*)",
       "Bash(CI=false npm run build)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(ssh:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
