@@ -90,7 +90,7 @@ export default function Reports() {
       // Header principal
       doc.setFontSize(20);
       doc.setTextColor(40, 116, 166);
-      doc.text('📊 Reporte de Movimientos', 14, 25);
+      doc.text('Reporte de Movimientos', 14, 25);
       
       // Información del reporte
       doc.setFontSize(10);
@@ -147,7 +147,7 @@ export default function Reports() {
         
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
-        doc.text(`💰 Valor total de movimientos: $${totalCost.toFixed(2)}`, 14, yPos);
+        doc.text(`Valor total de movimientos: $${totalCost.toFixed(2)}`, 14, yPos);
       }
       
       // Footer
@@ -175,7 +175,7 @@ export default function Reports() {
       // Header principal  
       doc.setFontSize(20);
       doc.setTextColor(34, 139, 34);
-      doc.text('📦 Reporte de Inventario', 14, 25);
+      doc.text('Reporte de Inventario', 14, 25);
       
       // Información del reporte
       doc.setFontSize(10);
@@ -200,7 +200,7 @@ export default function Reports() {
       } else {
         // Preparar datos para la tabla
         const tableData = data.inventory.map((item: any) => {
-          const stockStatus = (item.current_stock || 0) <= (item.min_stock || 0) ? '⚠️' : '✅';
+          const stockStatus = (item.current_stock || 0) <= (item.min_stock || 0) ? 'BAJO' : 'OK';
           return [
             item.code || '-',
             item.name || '-',
@@ -238,7 +238,7 @@ export default function Reports() {
         const yPos = (doc as any).lastAutoTable?.finalY + 10 || 150;
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
-        doc.text(`📊 Resumen del Inventario`, 14, yPos);
+        doc.text(`Resumen del Inventario`, 14, yPos);
         doc.setFontSize(10);
         doc.text(`• Total de componentes: ${data.inventory.length}`, 14, yPos + 10);
         doc.text(`• Valor total: $${totalValue.toFixed(2)}`, 14, yPos + 15);
@@ -275,7 +275,7 @@ export default function Reports() {
       // Header principal
       doc.setFontSize(20);
       doc.setTextColor(220, 53, 69);
-      doc.text('⚠️ Reporte de Stock Bajo', 14, 25);
+      doc.text('Reporte de Stock Bajo', 14, 25);
       
       // Información del reporte
       doc.setFontSize(10);
@@ -288,7 +288,7 @@ export default function Reports() {
       if (lowStockItems.length === 0) {
         doc.setFontSize(16);
         doc.setTextColor(34, 139, 34);
-        doc.text('✅ ¡Excelente! No hay componentes con stock bajo.', 14, 70);
+        doc.text('Excelente! No hay componentes con stock bajo.', 14, 70);
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
         doc.text('Todos los componentes están por encima del stock mínimo establecido.', 14, 85);
@@ -342,7 +342,7 @@ export default function Reports() {
         const yPos = (doc as any).lastAutoTable?.finalY + 15 || 150;
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
-        doc.text('📋 Recomendaciones:', 14, yPos);
+        doc.text('Recomendaciones:', 14, yPos);
         doc.setFontSize(10);
         doc.text('• Revisar proveedores para componentes críticos', 14, yPos + 10);
         doc.text('• Programar reabastecimiento urgente', 14, yPos + 15);
@@ -383,7 +383,7 @@ export default function Reports() {
       // Header principal
       doc.setFontSize(20);
       doc.setTextColor(79, 70, 229);
-      doc.text('🔖 Reporte de Reservas', 14, 25);
+      doc.text('Reporte de Reservas', 14, 25);
       
       // Información del reporte
       doc.setFontSize(10);
@@ -404,7 +404,7 @@ export default function Reports() {
       if (reservations.length === 0) {
         doc.setFontSize(16);
         doc.setTextColor(34, 139, 34);
-        doc.text('📋 No hay componentes con stock reservado actualmente.', 14, 70);
+        doc.text('No hay componentes con stock reservado actualmente.', 14, 70);
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
         doc.text('Todas las unidades del inventario están disponibles para uso.', 14, 85);
@@ -450,7 +450,7 @@ export default function Reports() {
         const yPos = (doc as any).lastAutoTable?.finalY + 15 || 150;
         doc.setFontSize(12);
         doc.setTextColor(0, 0, 0);
-        doc.text('📊 Resumen de Reservas:', 14, yPos);
+        doc.text('Resumen de Reservas:', 14, yPos);
         doc.setFontSize(10);
         doc.text(`• Total de componentes con reservas: ${reservations.length}`, 14, yPos + 10);
         doc.text(`• Total de unidades reservadas: ${totalReserved}`, 14, yPos + 15);
@@ -459,7 +459,7 @@ export default function Reports() {
         // Recomendaciones
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
-        doc.text('💡 Revisar regularmente las reservas para liberar stock no utilizado', 14, yPos + 30);
+        doc.text('Nota: Revisar regularmente las reservas para liberar stock no utilizado', 14, yPos + 30);
       }
       
       // Footer
