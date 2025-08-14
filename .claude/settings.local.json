@@ -36,8 +36,10 @@
       "Bash(do echo \"Checking $file:\")",
       "Bash(done)",
       "Bash(npm cache clean:*)",
-      "Bash(CI=false npm run build)"
+      "Bash(CI=false npm run build)",
+      "Bash(git pull:*)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   }
 }
