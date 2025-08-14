@@ -33,6 +33,7 @@ import {
   Save as SaveIcon,
   Folder as FolderIcon,
   Visibility as VisibilityIcon,
+  GetApp as GetAppIcon,
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesService, Recipe } from '../services/recipes.service';
@@ -259,6 +260,198 @@ export default function Projection() {
   const allComponentsAvailable = componentRequirements.length > 0 && 
     componentRequirements.every(req => req.isAvailable);
 
+  const generatePDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const recipesHtml = selectedRecipes.map(({ recipe, quantity }) => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ddd;">${recipe.name}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${quantity}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${recipe.ingredients?.length || 0}</td>
+      </tr>
+    `).join('');
+
+    const componentsHtml = componentRequirements.map(req => `
+      <tr style="background-color: ${req.isAvailable ? '#f8f9fa' : '#fff3cd'};">
+        <td style="padding: 8px; border: 1px solid #ddd;">${req.component.name}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${req.requiredQuantity}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${req.availableQuantity}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: right; ${req.shortage > 0 ? 'color: #dc3545; font-weight: bold;' : 'color: #28a745; font-weight: bold;'}">${req.shortage > 0 ? req.shortage : 'Completo'}</td>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+          <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; background-color: ${req.isAvailable ? '#28a745' : '#dc3545'};">
+            ${req.isAvailable ? 'Disponible' : 'Faltante'}
+          </span>
+        </td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Proyección de Producción</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              margin: 0;
+              padding: 20px;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              border-bottom: 2px solid #007bff;
+              padding-bottom: 20px;
+            }
+            .header h1 {
+              margin: 0;
+              color: #007bff;
+              font-size: 28px;
+            }
+            .header .date {
+              color: #666;
+              font-size: 14px;
+              margin-top: 10px;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 8px 16px;
+              border-radius: 20px;
+              font-weight: bold;
+              font-size: 14px;
+              margin: 10px 0;
+              color: white;
+              background-color: ${allComponentsAvailable ? '#28a745' : '#ffc107'};
+            }
+            .section {
+              margin-bottom: 40px;
+            }
+            .section h2 {
+              color: #007bff;
+              border-bottom: 1px solid #eee;
+              padding-bottom: 10px;
+              margin-bottom: 20px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 20px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            th {
+              background-color: #007bff;
+              color: white;
+              padding: 12px 8px;
+              text-align: left;
+              font-weight: bold;
+            }
+            th[style*="text-align: center"] {
+              text-align: center;
+            }
+            th[style*="text-align: right"] {
+              text-align: right;
+            }
+            td {
+              padding: 8px;
+              border: 1px solid #ddd;
+            }
+            tr:nth-child(even) {
+              background-color: #f8f9fa;
+            }
+            .summary {
+              background-color: #f8f9fa;
+              padding: 20px;
+              border-radius: 8px;
+              border-left: 4px solid #007bff;
+            }
+            @media print {
+              body { margin: 0; padding: 15px; }
+              .section { page-break-inside: avoid; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>📊 Proyección de Producción</h1>
+            <div class="date">Generado el ${dateStr}</div>
+            <div class="status-badge">
+              ${allComponentsAvailable ? '✅ Todos los componentes disponibles' : '⚠️ Hay componentes faltantes'}
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>🔧 Recetas Seleccionadas</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre de la Receta</th>
+                  <th style="text-align: center;">Cantidad a Producir</th>
+                  <th style="text-align: center;">Componentes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${recipesHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="section">
+            <h2>📦 Requerimientos de Componentes</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Componente</th>
+                  <th style="text-align: right;">Cantidad Requerida</th>
+                  <th style="text-align: right;">Cantidad Disponible</th>
+                  <th style="text-align: right;">Faltante</th>
+                  <th style="text-align: center;">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${componentsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="summary">
+            <h3>📋 Resumen</h3>
+            <ul>
+              <li><strong>Total de recetas:</strong> ${selectedRecipes.length}</li>
+              <li><strong>Total de componentes requeridos:</strong> ${componentRequirements.length}</li>
+              <li><strong>Componentes disponibles:</strong> ${componentRequirements.filter(req => req.isAvailable).length}</li>
+              <li><strong>Componentes faltantes:</strong> ${componentRequirements.filter(req => !req.isAvailable).length}</li>
+              <li><strong>Estado general:</strong> ${allComponentsAvailable ? '✅ Factible - Se puede producir' : '⚠️ No factible - Faltan componentes'}</li>
+            </ul>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    // Esperar a que se cargue el contenido antes de abrir el diálogo de impresión
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    };
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -421,11 +614,22 @@ export default function Projection() {
                 <Typography variant="h6" sx={{ flexGrow: 1 }}>
                   Requerimientos de Componentes
                 </Typography>
-                <Chip
-                  icon={allComponentsAvailable ? <CheckCircleIcon /> : <WarningIcon />}
-                  label={allComponentsAvailable ? 'Todos disponibles' : 'Hay faltantes'}
-                  color={allComponentsAvailable ? 'success' : 'warning'}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<GetAppIcon />}
+                    onClick={generatePDF}
+                    size="small"
+                  >
+                    Descargar PDF
+                  </Button>
+                  <Chip
+                    icon={allComponentsAvailable ? <CheckCircleIcon /> : <WarningIcon />}
+                    label={allComponentsAvailable ? 'Todos disponibles' : 'Hay faltantes'}
+                    color={allComponentsAvailable ? 'success' : 'warning'}
+                  />
+                </Box>
               </Box>
               <TableContainer>
                 <Table>
@@ -445,9 +649,13 @@ export default function Projection() {
                         <TableCell align="right">{req.requiredQuantity}</TableCell>
                         <TableCell align="right">{req.availableQuantity}</TableCell>
                         <TableCell align="right">
-                          {req.shortage > 0 && (
+                          {req.shortage > 0 ? (
                             <Typography color="error">
                               {req.shortage}
+                            </Typography>
+                          ) : (
+                            <Typography color="success.main" fontWeight="bold">
+                              Completo
                             </Typography>
                           )}
                         </TableCell>
