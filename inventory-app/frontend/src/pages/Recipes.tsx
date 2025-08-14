@@ -32,6 +32,7 @@ import {
   Visibility,
   AddCircle,
   RemoveCircle,
+  ContentCopy,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
@@ -237,7 +238,7 @@ export default function Recipes() {
     {
       field: 'actions',
       headerName: 'Acciones',
-      width: isAdmin ? 150 : 80,
+      width: isAdmin ? 190 : 120,
       sortable: false,
       renderCell: (params) => (
         <>
@@ -249,6 +250,15 @@ export default function Recipes() {
             disabled={loadingRecipe}
           >
             <Visibility />
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={() => handleDuplicate(params.row)}
+            color="secondary"
+            title="Duplicar receta"
+            disabled={loadingRecipe}
+          >
+            <ContentCopy />
           </IconButton>
           {isAdmin && (
             <>
@@ -331,6 +341,40 @@ export default function Recipes() {
   const handleDelete = async (id: string) => {
     if (window.confirm('¿Está seguro de eliminar esta receta?')) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const handleDuplicate = async (recipe: Recipe) => {
+    try {
+      setLoadingRecipe(true);
+      const fullRecipe = await recipesService.getRecipeById(recipe.id);
+      const recipeData = fullRecipe.recipe;
+      
+      // Crear una copia de la receta con un nuevo código
+      const duplicatedFormData = {
+        code: `${recipeData.code}_COPIA`,
+        name: `${recipeData.name} (Copia)`,
+        description: recipeData.description || '',
+        output_component_id: recipeData.output_component_id || '',
+        output_quantity: recipeData.output_quantity || 1,
+        ingredients: recipeData.ingredients?.map(ing => ({
+          component_id: ing.component_id || '',
+          quantity: ing.quantity || 1
+        })) || [{ component_id: '', quantity: 1 }]
+      };
+      
+      // Resetear el formulario con los datos duplicados
+      reset(duplicatedFormData);
+      
+      // Limpiar la receta seleccionada para que se cree una nueva
+      setSelectedRecipe(null);
+      setViewMode(false);
+      setOpenDialog(true);
+    } catch (error) {
+      console.error('Error al duplicar receta:', error);
+      alert('Error al duplicar la receta');
+    } finally {
+      setLoadingRecipe(false);
     }
   };
 
