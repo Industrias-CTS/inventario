@@ -1,0 +1,12 @@
+const fs = require('fs');
+const path = require('path');
+const filePath = path.join(__dirname, 'dist/controllers/movements.controller.js');
+let content = fs.readFileSync(filePath, 'utf8');
+const oldQuery1 = `JOIN movement_types mt ON m.movement_type_id = mt.id`;
+const newQuery1 = `LEFT JOIN movement_types mt ON m.type = mt.code`;
+const oldQuery2 = `movement_type_id`;
+const newQuery2 = `type as movement_type_id`;
+content = content.replace(new RegExp(oldQuery1, 'g'), newQuery1);
+content = content.replace(new RegExp(`m\\.${oldQuery2}`, 'g'), `m.${newQuery2}`);
+ fs.writeFileSync(filePath, content);
+console.log('✅ Consulta SQL corregida');
