@@ -351,6 +351,21 @@ export default function Reports() {
             7: { cellWidth: 22, halign: 'right' },
             8: { cellWidth: 25, halign: 'center' },
           },
+          didParseCell: function (data: any) {
+            // Colorear la columna de prioridad (índice 8)
+            if (data.column.index === 8) {
+              const priorityValue = data.cell.text[0];
+              if (priorityValue === 'CRÍTICO') {
+                data.cell.styles.fillColor = [220, 53, 69]; // Rojo
+                data.cell.styles.textColor = [255, 255, 255]; // Texto blanco
+                data.cell.styles.fontStyle = 'bold';
+              } else if (priorityValue === 'BAJO') {
+                data.cell.styles.fillColor = [255, 152, 0]; // Naranja
+                data.cell.styles.textColor = [255, 255, 255]; // Texto blanco
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+          },
         });
         
         // Recomendaciones
