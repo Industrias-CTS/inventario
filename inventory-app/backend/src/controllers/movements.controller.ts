@@ -511,10 +511,17 @@ export const createInvoice = async (req: Request, res: Response) => {
 
       let totalInvoiceAmount = 0;
       
-      // Calcular costo adicional por unidad (envío + impuestos distribuido entre todas las unidades)
-      const additionalCost = Number(shipping_cost) + Number(shipping_tax);
-      // Calcular cantidad total de todas las unidades
+      // ======= LÓGICA DE DISTRIBUCIÓN DE COSTOS =======
+      // PASO 1: Identificar los componentes y cantidades (ya hecho en el frontend)
+      
+      // PASO 2: Sumar el total de unidades compradas
       const totalQuantity = items.reduce((sum: number, item: any) => sum + Number(item.quantity), 0);
+      
+      // PASO 3: Sumar los costos adicionales (envío + impuestos + otros cargos)
+      const additionalCost = Number(shipping_cost) + Number(shipping_tax);
+      
+      // PASO 4: Calcular el costo adicional por unidad
+      // Se divide el costo adicional total entre la cantidad total de unidades
       const costPerUnit = totalQuantity > 0 ? additionalCost / totalQuantity : 0;
 
       for (const item of items) {
@@ -531,9 +538,14 @@ export const createInvoice = async (req: Request, res: Response) => {
         let newStock = component.current_stock;
         let newCostPrice = component.cost_price || 0;
         const quantity = Number(item.quantity);
-        // CORRIGIDO: Usar el total_cost del item dividido por quantity como base del unit_cost
+        
+        // PASO 5: Sumar ese valor al precio unitario base de cada producto
+        // Esto ajusta cada precio para que incluya una parte proporcional del costo del envío
+        
+        // Precio unitario base del item (sin costos adicionales)
         const baseUnitCost = Number(item.total_cost) / quantity;
-        // NUEVA FUNCIONALIDAD: Agregar costo de envío e impuestos al unit_cost
+        
+        // Precio final = precio base + costo adicional por unidad
         const itemUnitCost = baseUnitCost + costPerUnit;
 
         switch (operation) {
@@ -595,12 +607,20 @@ export const createInvoice = async (req: Request, res: Response) => {
           component_code: item.component_code,
           component_name: item.component_name,
           quantity: item.quantity,
-          unit_cost: itemUnitCost, // Mostrar el unit_cost que incluye costos adicionales
-          base_unit_cost: baseUnitCost, // Mostrar también el costo base original
-          additional_cost_per_unit: costPerUnit, // Mostrar cuánto se agregó por costos de envío/impuestos por unidad
-          total_additional_cost: costPerUnit * quantity, // Mostrar el costo adicional total para este item
-          total_cost: item.quantity * itemUnitCost, // Mostrar el total_cost que incluye costos adicionales
-          new_stock: newStock
+          base_unit_cost: baseUnitCost, // Precio unitario base del producto
+          additional_cost_per_unit: costPerUnit, // Costo adicional distribuido por unidad
+          final_unit_cost: itemUnitCost, // Precio final por unidad (base + adicional)
+          total_additional_cost: costPerUnit * quantity, // Costo adicional total para este item
+          total_cost: item.quantity * itemUnitCost, // Costo total final del item
+          new_stock: newStock,
+          // Información para debug
+          calculation_details: {
+            original_total_cost: item.total_cost,
+            quantity: quantity,
+            base_unit_cost: baseUnitCost,
+            shipping_distribution: costPerUnit,
+            final_unit_cost: itemUnitCost
+          }
         });
 
         totalInvoiceAmount += (item.quantity * itemUnitCost); // Sumar el total_cost que incluye costos adicionales
@@ -613,10 +633,19 @@ export const createInvoice = async (req: Request, res: Response) => {
         invoice_id: invoiceId,
         reference_number,
         movements,
+        // Información de costos
         subtotal: totalInvoiceAmount,
         shipping_cost: Number(shipping_cost),
         shipping_tax: Number(shipping_tax),
-        total_amount: finalAmount
+        total_amount: finalAmount,
+        // Información de distribución de costos
+        cost_distribution: {
+          total_items: items.length,
+          total_quantity: totalQuantity,
+          additional_costs: additionalCost,
+          cost_per_unit: costPerUnit,
+          explanation: `Se distribuyeron $${additionalCost.toFixed(4)} entre ${totalQuantity} unidades = $${costPerUnit.toFixed(4)} por unidad`
+        }
       });
     });
   } catch (error: any) {
