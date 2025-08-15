@@ -283,7 +283,10 @@ export default function Projection() {
 
     const componentsHtml = componentRequirements.map(req => `
       <tr style="background-color: ${req.isAvailable ? '#f8f9fa' : '#fff3cd'};">
-        <td style="padding: 8px; border: 1px solid #ddd;">${req.component.name}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">
+          <div style="font-weight: bold;">${req.component.name}</div>
+          <div style="font-size: 12px; color: #666;">${req.component.code}</div>
+        </td>
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${req.requiredQuantity}</td>
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${req.availableQuantity}</td>
         <td style="padding: 8px; border: 1px solid #ddd; text-align: right; ${req.shortage > 0 ? 'color: #dc3545; font-weight: bold;' : 'color: #28a745; font-weight: bold;'}">${req.shortage > 0 ? req.shortage : 'Completo'}</td>
@@ -880,7 +883,14 @@ export default function Projection() {
                   <TableBody>
                     {componentRequirements.map((req) => (
                       <TableRow key={req.component.id}>
-                        <TableCell>{req.component.name}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight="bold">
+                            {req.component.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {req.component.code}
+                          </Typography>
+                        </TableCell>
                         <TableCell align="right">{req.requiredQuantity}</TableCell>
                         <TableCell align="right">{req.availableQuantity}</TableCell>
                         <TableCell align="right">
