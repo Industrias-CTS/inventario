@@ -6,7 +6,8 @@ import {
   createComponent,
   updateComponent,
   deleteComponent,
-  getComponentStock
+  getComponentStock,
+  checkDuplicateCodes
 } from '@/controllers/components.controller';
 import { authenticate, authorize } from '@/middlewares/auth';
 import { validateRequest } from '@/middlewares/validation';
@@ -14,6 +15,7 @@ import { validateRequest } from '@/middlewares/validation';
 const router = Router();
 
 router.get('/', authenticate, getComponents);
+router.get('/check-duplicates', authenticate, authorize('admin'), checkDuplicateCodes);
 router.get('/:id', authenticate, getComponentById);
 router.get('/:id/stock', authenticate, getComponentStock);
 

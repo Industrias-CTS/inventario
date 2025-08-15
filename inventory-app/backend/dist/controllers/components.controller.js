@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getUnits = exports.getCategories = exports.getComponentStock = exports.deleteComponent = exports.updateComponent = exports.createComponent = exports.getComponentById = exports.getComponents = void 0;
+exports.checkDuplicateCodes = exports.getUnits = exports.getCategories = exports.getComponentStock = exports.deleteComponent = exports.updateComponent = exports.createComponent = exports.getComponentById = exports.getComponents = void 0;
 const database_config_1 = require("../config/database.config");
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const getComponents = async (req, res) => {
@@ -71,9 +71,23 @@ const createComponent = async (req, res) => {
         const { code, name, description, category_id, unit_id, min_stock = 0, max_stock, location, cost_price = 0, sale_price = 0 } = req.body;
         const id = generateId();
         const now = new Date().toISOString();
-        const checkExisting = await database_config_1.db.get('SELECT id FROM components WHERE code = ?', [code]);
+        // Normalizar el código
+        const normalizedCode = code.trim().toLowerCase();
+        // Verificar con diferentes variaciones
+        const checkExisting = await database_config_1.db.get('SELECT id, code, name FROM components WHERE LOWER(TRIM(code)) = LOWER(TRIM(?))', [normalizedCode]);
         if (checkExisting) {
-            return res.status(400).json({ error: 'El código del componente ya existe' });
+            console.log('Código duplicado en creación:', {
+                intentedCode: code,
+                existingComponent: checkExisting
+            });
+            return res.status(400).json({
+                error: `El código '${code}' ya existe en el componente: ${checkExisting.name} (${checkExisting.code})`,
+                existingComponent: {
+                    id: checkExisting.id,
+                    code: checkExisting.code,
+                    name: checkExisting.name
+                }
+            });
         }
         const query = `
       INSERT INTO components (
@@ -111,9 +125,25 @@ const updateComponent = async (req, res) => {
         }
         // Si se está actualizando el código, verificar que no exista en otro componente
         if (updates.code && updates.code !== existing.code) {
-            const codeExists = await database_config_1.db.get('SELECT id FROM components WHERE code = ? AND id != ?', [updates.code, id]);
+            // Normalizar el código (trim y lowercase)
+            const normalizedCode = updates.code.trim().toLowerCase();
+            // Verificar con diferentes variaciones
+            const codeExists = await database_config_1.db.get(`SELECT id, code, name FROM components 
+         WHERE (LOWER(TRIM(code)) = LOWER(TRIM(?)) OR code = ?) 
+         AND id != ?`, [normalizedCode, updates.code, id]);
             if (codeExists) {
-                return res.status(400).json({ error: 'El código del componente ya existe en otro componente' });
+                console.log('Código duplicado encontrado:', {
+                    intentedCode: updates.code,
+                    existingComponent: codeExists
+                });
+                return res.status(400).json({
+                    error: `El código '${updates.code}' ya existe en otro componente: ${codeExists.name} (${codeExists.code})`,
+                    existingComponent: {
+                        id: codeExists.id,
+                        code: codeExists.code,
+                        name: codeExists.name
+                    }
+                });
             }
         }
         delete updates.id;
@@ -212,4 +242,39 @@ const getUnits = async (_req, res) => {
     }
 };
 exports.getUnits = getUnits;
+const checkDuplicateCodes = async (req, res) => {
+    try {
+        const { code } = req.query;
+        // Buscar todos los componentes con el código especificado
+        const query = code
+            ? 'SELECT id, code, name FROM components WHERE code = ?'
+            : 'SELECT code, COUNT(*) as count FROM components GROUP BY code HAVING count > 1';
+        const result = code
+            ? await database_config_1.db.query(query, [code])
+            : await database_config_1.db.query(query);
+        // También verificar si hay códigos con espacios o caracteres especiales
+        const problematicCodes = await database_config_1.db.query(`
+      SELECT id, code, name, 
+        CASE 
+          WHEN code != TRIM(code) THEN 'has_spaces'
+          WHEN code != LOWER(code) THEN 'has_uppercase'
+          ELSE 'ok'
+        END as issue
+      FROM components 
+      WHERE code != TRIM(code) OR code != LOWER(code)
+    `);
+        res.json({
+            duplicates: result,
+            problematicCodes,
+            message: code
+                ? `Componentes con código '${code}'`
+                : 'Análisis de códigos duplicados'
+        });
+    }
+    catch (error) {
+        console.error('Error al verificar códigos duplicados:', error);
+        res.status(500).json({ error: 'Error al verificar códigos duplicados' });
+    }
+};
+exports.checkDuplicateCodes = checkDuplicateCodes;
 //# sourceMappingURL=components.controller.js.map

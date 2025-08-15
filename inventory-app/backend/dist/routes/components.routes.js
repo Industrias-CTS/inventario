@@ -7,6 +7,7 @@ const auth_1 = require("../middlewares/auth");
 const validation_1 = require("../middlewares/validation");
 const router = (0, express_1.Router)();
 router.get('/', auth_1.authenticate, components_controller_1.getComponents);
+router.get('/check-duplicates', auth_1.authenticate, (0, auth_1.authorize)('admin'), components_controller_1.checkDuplicateCodes);
 router.get('/:id', auth_1.authenticate, components_controller_1.getComponentById);
 router.get('/:id/stock', auth_1.authenticate, components_controller_1.getComponentStock);
 router.post('/', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
