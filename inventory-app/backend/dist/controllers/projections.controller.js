@@ -36,7 +36,7 @@ const getProjectionById = async (req, res) => {
             return res.status(404).json({ error: 'Proyección no encontrada' });
         }
         // Obtener recetas asociadas
-        const recipes = await database_config_1.db.query(`SELECT pr.*, r.name as recipe_name 
+        const recipes = await database_config_1.db.query(`SELECT pr.*, r.name as recipe_name, r.code as recipe_code 
        FROM projection_recipes pr
        JOIN recipes r ON pr.recipe_id = r.id
        WHERE pr.projection_id = ?`, [id]);
@@ -101,7 +101,7 @@ const createProjection = async (req, res) => {
             }
             // Obtener la proyección creada con todas sus relaciones
             const newProjection = await database_config_1.db.get('SELECT * FROM projections WHERE id = ?', [projectionId]);
-            const projectionRecipes = await database_config_1.db.query(`SELECT pr.*, r.name as recipe_name 
+            const projectionRecipes = await database_config_1.db.query(`SELECT pr.*, r.name as recipe_name, r.code as recipe_code 
          FROM projection_recipes pr
          JOIN recipes r ON pr.recipe_id = r.id
          WHERE pr.projection_id = ?`, [projectionId]);

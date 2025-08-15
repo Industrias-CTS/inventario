@@ -45,7 +45,7 @@ export const getProjectionById = async (req: Request, res: Response) => {
     
     // Obtener recetas asociadas
     const recipes = await db.query(
-      `SELECT pr.*, r.name as recipe_name 
+      `SELECT pr.*, r.name as recipe_name, r.code as recipe_code 
        FROM projection_recipes pr
        JOIN recipes r ON pr.recipe_id = r.id
        WHERE pr.projection_id = ?`,
@@ -137,7 +137,7 @@ export const createProjection = async (req: Request, res: Response) => {
       );
       
       const projectionRecipes = await db.query(
-        `SELECT pr.*, r.name as recipe_name 
+        `SELECT pr.*, r.name as recipe_name, r.code as recipe_code 
          FROM projection_recipes pr
          JOIN recipes r ON pr.recipe_id = r.id
          WHERE pr.projection_id = ?`,
