@@ -67,6 +67,10 @@ export default function Components() {
       setOpenDialog(false);
       reset();
     },
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.error || 'Error al crear el componente';
+      alert(errorMessage);
+    },
   });
 
   const updateMutation = useMutation({
@@ -77,6 +81,10 @@ export default function Components() {
       setOpenDialog(false);
       setSelectedComponent(null);
       reset();
+    },
+    onError: (error: any) => {
+      const errorMessage = error?.response?.data?.error || 'Error al actualizar el componente';
+      alert(errorMessage);
     },
   });
 
