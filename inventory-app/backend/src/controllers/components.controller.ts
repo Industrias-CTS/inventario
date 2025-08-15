@@ -137,6 +137,17 @@ export const updateComponent = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Componente no encontrado' });
     }
 
+    // Si se está actualizando el código, verificar que no exista en otro componente
+    if (updates.code && updates.code !== existing.code) {
+      const codeExists = await db.get(
+        'SELECT id FROM components WHERE code = ? AND id != ?', 
+        [updates.code, id]
+      );
+      if (codeExists) {
+        return res.status(400).json({ error: 'El código del componente ya existe en otro componente' });
+      }
+    }
+
     delete updates.id;
     delete updates.created_at;
     
