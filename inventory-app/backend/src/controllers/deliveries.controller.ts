@@ -171,10 +171,14 @@ export const deliveriesController = {
           delivery_date, notes, delivery_address, phone, email, userId
         ]);
 
-        // Obtener la remisión creada
+        // Obtener la remisión creada por número de remisión (más confiable)
         const delivery = await db.get(`
-          SELECT * FROM deliveries WHERE id = ?
-        `, [deliveryResult.lastInsertRowid]);
+          SELECT * FROM deliveries WHERE delivery_number = ?
+        `, [deliveryNumber]);
+
+        if (!delivery) {
+          throw new Error('Error: No se pudo crear la remisión');
+        }
 
         // Crear los items de remisión
         for (const item of items) {
