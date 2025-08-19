@@ -34,7 +34,7 @@ function fixPathAliases(filePath) {
   const patterns = [
     { from: /require\("@\//g, to: `require("${pathPrefix}` },
     { from: /from "@\//g, to: `from "${pathPrefix}` },
-    { from: /import.*from.*"@\//g, to: match => match.replace('"@/', `"${pathPrefix}`) }
+    { from: /"@\//g, to: `"${pathPrefix}` }
   ];
   
   patterns.forEach(pattern => {

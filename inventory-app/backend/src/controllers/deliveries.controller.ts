@@ -161,7 +161,7 @@ export const deliveriesController = {
         const deliveryNumber = `REM-${year}-${sequence.toString().padStart(4, '0')}`;
 
         // Crear la remisión
-        const deliveryResult = await db.run(`
+        await db.run(`
           INSERT INTO deliveries (
             delivery_number, recipient_name, recipient_company, recipient_id, 
             delivery_date, notes, delivery_address, phone, email, created_by

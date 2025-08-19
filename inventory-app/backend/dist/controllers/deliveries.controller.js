@@ -131,7 +131,7 @@ exports.deliveriesController = {
                 }
                 const deliveryNumber = `REM-${year}-${sequence.toString().padStart(4, '0')}`;
                 // Crear la remisión
-                const deliveryResult = await database_config_1.db.run(`
+                await database_config_1.db.run(`
           INSERT INTO deliveries (
             delivery_number, recipient_name, recipient_company, recipient_id, 
             delivery_date, notes, delivery_address, phone, email, created_by
@@ -140,10 +140,13 @@ exports.deliveriesController = {
                     deliveryNumber, recipient_name, recipient_company, recipient_id,
                     delivery_date, notes, delivery_address, phone, email, userId
                 ]);
-                // Obtener la remisión creada
+                // Obtener la remisión creada por número de remisión (más confiable)
                 const delivery = await database_config_1.db.get(`
-          SELECT * FROM deliveries WHERE id = ?
-        `, [deliveryResult.lastInsertRowid]);
+          SELECT * FROM deliveries WHERE delivery_number = ?
+        `, [deliveryNumber]);
+                if (!delivery) {
+                    throw new Error('Error: No se pudo crear la remisión');
+                }
                 // Crear los items de remisión
                 for (const item of items) {
                     await database_config_1.db.run(`
