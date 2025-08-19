@@ -1,9 +1,9 @@
 module.exports = {
   apps: [
     {
-      name: 'inventory-backend',
-      script: 'dist/index.js',
-      cwd: '/var/www/inventory/backend',
+      name: 'inventario-backend',
+      script: 'dist/index-simple.js',
+      cwd: '/var/inventario-backend',
       instances: 1,
       exec_mode: 'cluster',
       

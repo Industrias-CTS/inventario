@@ -134,7 +134,14 @@ export const deliveriesController = {
         items
       } = req.body;
 
-      const userId = (req as any).user?.id;
+      const userId = (req as any).user?.userId || (req as any).user?.id;
+
+      if (!userId) {
+        console.error('Error: user_id is null or undefined. req.user:', (req as any).user);
+        return res.status(401).json({ 
+          error: 'Usuario no autenticado correctamente' 
+        });
+      }
 
       if (!recipient_name || !items || items.length === 0) {
         return res.status(400).json({ 
@@ -182,14 +189,15 @@ export const deliveriesController = {
 
         // Crear los items de remisión
         for (const item of items) {
+          const totalPrice = item.quantity * item.unit_price;
           await db.run(`
             INSERT INTO delivery_items (
               delivery_id, component_id, quantity, serial_numbers, 
-              unit_price, notes
-            ) VALUES (?, ?, ?, ?, ?, ?)
+              unit_price, total_price, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
           `, [
             delivery.id, item.component_id, item.quantity,
-            item.serial_numbers, item.unit_price, item.notes
+            item.serial_numbers, item.unit_price, totalPrice, item.notes
           ]);
 
           // Registrar movimiento de salida (usando estructura de BD de producción)

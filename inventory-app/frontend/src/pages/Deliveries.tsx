@@ -14,6 +14,10 @@ import {
   Tooltip,
   TextField,
   InputAdornment,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -23,13 +27,14 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Search as SearchIcon,
+  ChangeCircle as StatusIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { deliveriesService } from '../services/deliveries.service';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import DeliveryForm from '../components/DeliveryForm';
 import DeliveryPreview from '../components/DeliveryPreview';
-import { Delivery } from '../types';
+import { Delivery, DeliveryWithItems } from '../types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -57,12 +62,24 @@ export default function Deliveries() {
   const [currentTab, setCurrentTab] = useState(0);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+  const [selectedDelivery, setSelectedDelivery] = useState<Delivery | DeliveryWithItems | null>(null);
+  const [newStatus, setNewStatus] = useState<'pending' | 'delivered' | 'cancelled'>('pending');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [search, setSearch] = useState('');
 
   const queryClient = useQueryClient();
+
+  // Helper para obtener ID de delivery
+  const getDeliveryId = (delivery: Delivery | DeliveryWithItems) => {
+    return 'delivery' in delivery ? delivery.delivery.id : delivery.id;
+  };
+
+  // Helper para obtener data de delivery
+  const getDeliveryData = (delivery: Delivery | DeliveryWithItems) => {
+    return 'delivery' in delivery ? delivery.delivery : delivery;
+  };
 
   const { data: deliveriesData, isLoading } = useQuery({
     queryKey: ['deliveries', page + 1, rowsPerPage, search, currentTab],
@@ -86,6 +103,35 @@ export default function Deliveries() {
     mutationFn: deliveriesService.downloadDeliveryPDF,
   });
 
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      // Primero obtener todos los datos de la remisión
+      const fullDelivery = await deliveriesService.getDeliveryById(id);
+      const deliveryData = fullDelivery.delivery;
+      
+      // Enviar todos los datos con el nuevo estado
+      return deliveriesService.updateDelivery(id, {
+        recipient_name: deliveryData.recipient_name,
+        recipient_company: deliveryData.recipient_company,
+        recipient_id: deliveryData.recipient_id,
+        delivery_date: deliveryData.delivery_date,
+        notes: deliveryData.notes,
+        delivery_address: deliveryData.delivery_address,
+        phone: deliveryData.phone,
+        email: deliveryData.email,
+        status: status as 'pending' | 'delivered' | 'cancelled'
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      setIsStatusDialogOpen(false);
+      setSelectedDelivery(null);
+    },
+    onError: (error) => {
+      console.error('Error al actualizar estado:', error);
+    },
+  });
+
   function getStatusFromTab(tab: number): string | undefined {
     switch (tab) {
       case 1: return 'pending';
@@ -105,9 +151,18 @@ export default function Deliveries() {
     setPage(0);
   };
 
-  const handleEdit = (delivery: Delivery) => {
-    setSelectedDelivery(delivery);
-    setIsFormOpen(true);
+  const handleEdit = async (delivery: Delivery) => {
+    try {
+      // Obtener los detalles completos de la remisión incluidos los items
+      const fullDelivery = await deliveriesService.getDeliveryById(delivery.id);
+      setSelectedDelivery(fullDelivery);
+      setIsFormOpen(true);
+    } catch (error) {
+      console.error('Error al obtener detalles de la remisión:', error);
+      // Si hay error, usar la información básica
+      setSelectedDelivery(delivery);
+      setIsFormOpen(true);
+    }
   };
 
   const handlePreview = (delivery: Delivery) => {
@@ -125,11 +180,28 @@ export default function Deliveries() {
     }
   };
 
-  const handleDownload = async (delivery: Delivery) => {
+  const handleDownload = async (delivery: Delivery | DeliveryWithItems) => {
     try {
-      await downloadMutation.mutateAsync(delivery.id);
+      const deliveryId = getDeliveryId(delivery);
+      await downloadMutation.mutateAsync(deliveryId);
     } catch (error) {
       console.error('Error al descargar PDF:', error);
+    }
+  };
+
+  const handleChangeStatus = (delivery: Delivery) => {
+    setSelectedDelivery(delivery);
+    const deliveryData = getDeliveryData(delivery);
+    setNewStatus(deliveryData.status as 'pending' | 'delivered' | 'cancelled');
+    setIsStatusDialogOpen(true);
+  };
+
+  const handleConfirmStatusChange = () => {
+    if (selectedDelivery) {
+      updateStatusMutation.mutate({
+        id: getDeliveryId(selectedDelivery),
+        status: newStatus,
+      });
     }
   };
 
@@ -169,7 +241,17 @@ export default function Deliveries() {
       flex: 0,
       valueFormatter: (value: any) => {
         if (!value) return '';
-        return new Date(value).toLocaleDateString();
+        try {
+          const date = new Date(value);
+          if (isNaN(date.getTime())) return '';
+          return date.toLocaleDateString('es-CO', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          });
+        } catch {
+          return '';
+        }
       }
     },
     {
@@ -218,14 +300,17 @@ export default function Deliveries() {
       align: 'right',
       headerAlign: 'right',
       valueFormatter: (value: any) => {
-        if (!value) return '$0.00';
-        return `$${Number(value).toLocaleString('es-CO', { minimumFractionDigits: 2 })}`;
+        if (!value || isNaN(Number(value))) return '$0.00';
+        return `$${Number(value).toLocaleString('es-CO', { 
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2 
+        })}`;
       }
     },
     {
       field: 'actions',
       headerName: 'Acciones',
-      width: 200,
+      width: 240,
       flex: 0,
       sortable: false,
       filterable: false,
@@ -248,6 +333,11 @@ export default function Deliveries() {
           <Tooltip title="Editar">
             <IconButton size="small" onClick={() => handleEdit(params.row)}>
               <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Cambiar Estado">
+            <IconButton size="small" onClick={() => handleChangeStatus(params.row)}>
+              <StatusIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Eliminar">
@@ -362,11 +452,11 @@ export default function Deliveries() {
       {/* Dialog para vista previa */}
       <Dialog open={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          Vista Previa - {selectedDelivery?.delivery_number}
+          Vista Previa - {selectedDelivery ? getDeliveryData(selectedDelivery).delivery_number : ''}
         </DialogTitle>
         <DialogContent>
           {selectedDelivery && (
-            <DeliveryPreview deliveryId={selectedDelivery.id} />
+            <DeliveryPreview deliveryId={getDeliveryId(selectedDelivery)} />
           )}
         </DialogContent>
         <DialogActions>
@@ -383,6 +473,41 @@ export default function Deliveries() {
               Descargar PDF
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para cambiar estado */}
+      <Dialog open={isStatusDialogOpen} onClose={() => setIsStatusDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Cambiar Estado - {selectedDelivery ? getDeliveryData(selectedDelivery).delivery_number : ''}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <FormControl fullWidth>
+              <InputLabel>Nuevo Estado</InputLabel>
+              <Select
+                value={newStatus}
+                label="Nuevo Estado"
+                onChange={(e) => setNewStatus(e.target.value as 'pending' | 'delivered' | 'cancelled')}
+              >
+                <MenuItem value="pending">Pendiente</MenuItem>
+                <MenuItem value="delivered">Entregado</MenuItem>
+                <MenuItem value="cancelled">Cancelado</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIsStatusDialogOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmStatusChange}
+            disabled={updateStatusMutation.isPending}
+          >
+            Confirmar Cambio
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
