@@ -1,7 +1,7 @@
 # 🚀 PASOS PARA DESPLEGAR EN SERVIDOR AWS
 
 ## ✅ **CAMBIOS SUBIDOS A GITHUB**
-**Commit:** `601e487e7` - "✨ FEATURE: Implementar módulo completo de remisiones"
+**Commit:** `8d981391b` - "🔧 FIX: Solucionar error de path alias y compilación TypeScript"
 **URL:** https://github.com/Industrias-CTS/inventario
 
 ---
@@ -83,12 +83,17 @@ sudo cp -r build/* /var/www/inventario/
 # (Necesitarás subir manualmente los archivos compilados)
 ```
 
-### **PASO 7: Compilar Backend (si es necesario)**
+### **PASO 7: Compilar Backend (OBLIGATORIO)**
 ```bash
 cd /var/www/inventario-backend
 
-# Si el proyecto usa TypeScript compilado
+# Compilar TypeScript (esto resuelve los path aliases automáticamente)
 npm run build
+
+# Deberías ver algo como:
+# 🔧 Fixing TypeScript path aliases in compiled files...
+# ✅ Fixed: [varios archivos]
+# ✅ Path fix completed. Processed X files.
 
 # Verificar que se compilaron los nuevos archivos
 ls -la dist/controllers/
