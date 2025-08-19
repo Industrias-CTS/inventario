@@ -68,6 +68,7 @@ async function startServer() {
         const usersRoutes = require('./routes/users.routes').default;
         const projectionsRoutes = require('./routes/projections.routes').default;
         const reportsRoutes = require('./routes/reports.routes').default;
+        const deliveriesRoutes = require('./routes/deliveries.routes').default;
         app.use('/api/auth', authRoutes);
         app.use('/api/components', componentsRoutes);
         app.use('/api/movements', movementsRoutes);
@@ -77,6 +78,7 @@ async function startServer() {
         app.use('/api/users', usersRoutes);
         app.use('/api/projections', projectionsRoutes);
         app.use('/api/reports', reportsRoutes);
+        app.use('/api/deliveries', deliveriesRoutes);
         app.get('/api/movement-types', async (_req, res) => {
             try {
                 const types = await database_config_1.db.query('SELECT * FROM movement_types ORDER BY name');
@@ -109,6 +111,7 @@ async function startServer() {
                     movementTypes: '/api/movement-types',
                     users: '/api/users',
                     projections: '/api/projections',
+                    deliveries: '/api/deliveries',
                     health: '/health'
                 }
             });

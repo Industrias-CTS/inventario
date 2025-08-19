@@ -20,6 +20,7 @@ import Recipes from './pages/Recipes';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
 import Projection from './pages/Projection';
+import Deliveries from './pages/Deliveries';
 
 const theme = createTheme({
   palette: {
@@ -66,6 +67,7 @@ function App() {
                   <Route path="movements" element={<Movements />} />
                   <Route path="recipes" element={<Recipes />} />
                   <Route path="projection" element={<Projection />} />
+                  <Route path="deliveries" element={<Deliveries />} />
                   <Route path="reports" element={<Reports />} />
                   <Route path="users" element={<Users />} />
                 </Route>

@@ -100,7 +100,8 @@ INSERT INTO movement_types (code, name, operation) VALUES
     ('RESERVATION', 'Apartado', 'RESERVE'),
     ('RELEASE', 'Liberación', 'RELEASE'),
     ('TRANSFER_IN', 'Transferencia entrada', 'IN'),
-    ('TRANSFER_OUT', 'Transferencia salida', 'OUT')
+    ('TRANSFER_OUT', 'Transferencia salida', 'OUT'),
+    ('DELIVERY', 'Remisión/Entrega', 'OUT')
 ON CONFLICT (code) DO NOTHING;
 
 -- Tabla de movimientos
@@ -161,3 +162,74 @@ CREATE TRIGGER update_components_updated_at BEFORE UPDATE ON components
 
 CREATE TRIGGER update_recipes_updated_at BEFORE UPDATE ON recipes
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Tabla de remisiones
+CREATE TABLE IF NOT EXISTS deliveries (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    delivery_number VARCHAR(50) UNIQUE NOT NULL,
+    recipient_name VARCHAR(255) NOT NULL,
+    recipient_company VARCHAR(255),
+    recipient_id VARCHAR(50),
+    delivery_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    signature_data TEXT,
+    delivery_address TEXT,
+    phone VARCHAR(20),
+    email VARCHAR(255),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'cancelled')),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabla de items de remisión
+CREATE TABLE IF NOT EXISTS delivery_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    delivery_id UUID REFERENCES deliveries(id) ON DELETE CASCADE,
+    component_id UUID REFERENCES components(id) ON DELETE RESTRICT,
+    quantity DECIMAL(10,2) NOT NULL,
+    serial_numbers TEXT,
+    unit_price DECIMAL(10,2) DEFAULT 0,
+    total_price DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Índices para mejorar rendimiento
+CREATE INDEX idx_deliveries_delivery_number ON deliveries(delivery_number);
+CREATE INDEX idx_deliveries_delivery_date ON deliveries(delivery_date);
+CREATE INDEX idx_deliveries_status ON deliveries(status);
+CREATE INDEX idx_deliveries_created_by ON deliveries(created_by);
+CREATE INDEX idx_delivery_items_delivery_id ON delivery_items(delivery_id);
+CREATE INDEX idx_delivery_items_component_id ON delivery_items(component_id);
+
+-- Trigger para updated_at en deliveries
+CREATE TRIGGER update_deliveries_updated_at BEFORE UPDATE ON deliveries
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Función para generar número de remisión automático
+CREATE OR REPLACE FUNCTION generate_delivery_number()
+RETURNS VARCHAR(50) AS $$
+DECLARE
+    current_year VARCHAR(4);
+    sequence_number INTEGER;
+    delivery_number VARCHAR(50);
+BEGIN
+    current_year := EXTRACT(YEAR FROM CURRENT_DATE)::VARCHAR;
+    
+    -- Obtener el siguiente número secuencial para el año actual
+    SELECT COALESCE(MAX(
+        CASE 
+            WHEN delivery_number LIKE 'REM-' || current_year || '-%' 
+            THEN CAST(SUBSTRING(delivery_number FROM LENGTH('REM-' || current_year || '-') + 1) AS INTEGER)
+            ELSE 0
+        END
+    ), 0) + 1
+    INTO sequence_number
+    FROM deliveries;
+    
+    delivery_number := 'REM-' || current_year || '-' || LPAD(sequence_number::VARCHAR, 4, '0');
+    
+    RETURN delivery_number;
+END;
+$$ LANGUAGE plpgsql;

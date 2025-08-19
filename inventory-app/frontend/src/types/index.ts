@@ -143,3 +143,46 @@ export interface StockInfo {
   max_stock?: number;
   unit_symbol: string;
 }
+
+export interface Delivery {
+  id: string;
+  delivery_number: string;
+  recipient_name: string;
+  recipient_company?: string;
+  recipient_id?: string;
+  delivery_date: string;
+  notes?: string;
+  signature_data?: string;
+  delivery_address?: string;
+  phone?: string;
+  email?: string;
+  status: 'pending' | 'delivered' | 'cancelled';
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  created_by_username?: string;
+  items_count?: number;
+  total_amount?: number;
+}
+
+export interface DeliveryItem {
+  id: string;
+  delivery_id: string;
+  component_id: string;
+  quantity: number;
+  serial_numbers?: string;
+  unit_price: number;
+  total_price: number;
+  notes?: string;
+  created_at: string;
+  component_code?: string;
+  component_name?: string;
+  component_description?: string;
+  unit_name?: string;
+  unit_symbol?: string;
+}
+
+export interface DeliveryWithItems {
+  delivery: Delivery;
+  items: DeliveryItem[];
+}
