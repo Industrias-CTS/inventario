@@ -4,4 +4,4 @@
 # Keep databases and environment files
 # But exclude database files in wrong locations
 **/inventory.db
-!**/data/inventory.db
+!**/data/inventory.dbinventory-app/backend/data/*.db
