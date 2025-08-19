@@ -192,24 +192,18 @@ export const deliveriesController = {
             item.serial_numbers, item.unit_price, item.notes
           ]);
 
-          // Registrar movimiento de salida
-          const movementType = await db.get(`
-            SELECT id FROM movement_types WHERE code = 'DELIVERY'
-          `);
-          
-          if (movementType) {
-            await db.run(`
-              INSERT INTO movements (
-                movement_type_id, component_id, quantity, 
-                reference_number, notes, user_id
-              ) VALUES (?, ?, ?, ?, ?, ?)
-            `, [
-              movementType.id, item.component_id, -Math.abs(item.quantity),
-              `Remisión ${deliveryNumber}`, 
-              `Entrega a ${recipient_name}`, 
-              userId
-            ]);
-          }
+          // Registrar movimiento de salida (usando estructura de BD de producción)
+          await db.run(`
+            INSERT INTO movements (
+              type, component_id, quantity, 
+              reference, notes, user_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `, [
+            'salida', item.component_id, -Math.abs(item.quantity),
+            `Remisión ${deliveryNumber}`, 
+            `Entrega a ${recipient_name}`, 
+            userId
+          ]);
         }
 
         return delivery;
