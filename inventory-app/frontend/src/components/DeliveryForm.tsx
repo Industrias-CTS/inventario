@@ -357,16 +357,54 @@ export default function DeliveryForm({ delivery, onSuccess, onCancel }: Delivery
                             updateItem(index, 'unit_price', newValue.cost_price || 0);
                           }
                         }}
+                        renderOption={(props, option) => (
+                          <Box 
+                            component="li" 
+                            {...props}
+                            sx={{ 
+                              py: 1.5,
+                              px: 2,
+                              fontSize: '0.95rem',
+                              '&:hover': {
+                                backgroundColor: 'primary.light',
+                                color: 'primary.contrastText'
+                              }
+                            }}
+                          >
+                            <Box>
+                              <Box sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                                {option.code}
+                              </Box>
+                              <Box sx={{ fontSize: '0.9rem', color: 'text.secondary' }}>
+                                {option.name}
+                              </Box>
+                              {option.description && (
+                                <Box sx={{ fontSize: '0.8rem', color: 'text.secondary', mt: 0.5 }}>
+                                  {option.description}
+                                </Box>
+                              )}
+                              <Box sx={{ fontSize: '0.8rem', color: 'success.main', mt: 0.5 }}>
+                                Stock: {option.current_stock} {option.unit_symbol || 'UN'} | Precio: ${option.cost_price}
+                              </Box>
+                            </Box>
+                          </Box>
+                        )}
                         renderInput={(params) => (
                           <TextField
                             {...params}
                             placeholder="Seleccionar componente"
                             error={!!errors[`item_${index}_component`]}
                             helperText={errors[`item_${index}_component`]}
-                            size="small"
+                            size="medium"
+                            sx={{ minWidth: 300 }}
                           />
                         )}
-                        size="small"
+                        ListboxProps={{
+                          style: {
+                            maxHeight: 300,
+                            fontSize: '1rem'
+                          }
+                        }}
                         fullWidth
                       />
                     </TableCell>
