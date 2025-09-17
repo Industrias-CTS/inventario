@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { register, login, getProfile } from '@/controllers/auth.controller';
-import { authenticate } from '@/middlewares/auth';
-import { validateRequest } from '@/middlewares/validation';
+import { register, login, getProfile } from '../controllers/auth.controller';
+import { authenticate } from '../middlewares/auth';
+import { validateRequest } from '../middlewares/validation';
 
 const router = Router();
 

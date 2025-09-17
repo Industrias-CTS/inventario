@@ -1,9 +1,9 @@
 module.exports = {
   apps: [
     {
-      name: 'inventario-backend',
+      name: 'backend',
       script: 'dist/index-simple.js',
-      cwd: '/var/inventario-backend',
+      cwd: '/home/ubuntu/inventario/inventory-app/backend',
       instances: 1,
       exec_mode: 'cluster',
       
@@ -21,9 +21,9 @@ module.exports = {
       },
 
       // Configuracion de logs
-      error_file: '/var/log/pm2/inventory-backend-error.log',
-      out_file: '/var/log/pm2/inventory-backend-out.log',
-      log_file: '/var/log/pm2/inventory-backend.log',
+      error_file: '/home/ubuntu/.pm2/logs/backend-error.log',
+      out_file: '/home/ubuntu/.pm2/logs/backend-out.log',
+      log_file: '/home/ubuntu/.pm2/logs/backend.log',
       time: true,
       
       // Configuracion de reinicio
@@ -57,8 +57,8 @@ module.exports = {
       user: 'ubuntu',
       host: '34.198.163.51',
       ref: 'origin/main',
-      repo: 'git@github.com:username/inventory-app.git',
-      path: '/var/www/inventory',
+      repo: 'git@github.com:Industrias-CTS/inventario.git',
+      path: '/home/ubuntu/inventario',
       'pre-deploy-local': '',
       'post-deploy': 'npm install && npm run build && pm2 reload ecosystem.config.js --env production',
       'pre-setup': ''

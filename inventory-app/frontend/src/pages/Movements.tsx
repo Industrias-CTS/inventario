@@ -37,6 +37,7 @@ import {
   Delete,
   AddCircle,
   DeleteSweep,
+  Visibility,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
@@ -99,6 +100,8 @@ export default function Movements() {
   }>>([]);
   const [useRecipe, setUseRecipe] = useState(false);
   const [openClearDialog, setOpenClearDialog] = useState(false);
+  const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
+  const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: movementsData, isLoading: movementsLoading } = useQuery({
@@ -197,7 +200,7 @@ export default function Movements() {
     register: registerMovement,
     handleSubmit: handleSubmitMovement,
     reset: resetMovement,
-    // control: controlMovement,
+    control: controlMovement,
     watch: watchMovement,
     formState: { errors: movementErrors },
   } = useForm();
@@ -269,6 +272,26 @@ export default function Movements() {
     { field: 'total_cost', headerName: 'Costo Total', width: 120, type: 'number' },
     { field: 'reference_number', headerName: 'Referencia', width: 150 },
     {
+      field: 'notes',
+      headerName: 'Notas',
+      width: 200,
+      renderCell: (params) => {
+        const notes = params.value || '';
+        if (notes.length > 50) {
+          return (
+            <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {notes.substring(0, 50)}...
+            </Typography>
+          );
+        }
+        return (
+          <Typography variant="body2">
+            {notes || '-'}
+          </Typography>
+        );
+      },
+    },
+    {
       field: 'user',
       headerName: 'Usuario',
       width: 150,
@@ -279,6 +302,24 @@ export default function Movements() {
         }
         return 'Usuario desconocido';
       },
+    },
+    {
+      field: 'actions',
+      headerName: 'Acciones',
+      width: 100,
+      sortable: false,
+      renderCell: (params) => (
+        <IconButton
+          size="small"
+          onClick={() => {
+            setSelectedMovement(params.row);
+            setOpenDetailsDialog(true);
+          }}
+          sx={{ color: 'primary.main' }}
+        >
+          <Visibility />
+        </IconButton>
+      ),
     },
   ];
 
@@ -717,26 +758,62 @@ export default function Movements() {
               {/* Solo mostrar selector de componente si no estamos usando receta */}
               {!useRecipe && (
                 <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Componente"
-                    select
-                    {...registerMovement('component_id', {
+                  <Controller
+                    name="component_id"
+                    control={controlMovement}
+                    rules={{
                       required: !useRecipe ? 'El componente es requerido' : false,
-                    })}
-                    error={!!movementErrors.component_id}
-                    helperText={movementErrors.component_id?.message as string}
-                  >
-                    <MenuItem value="">Seleccionar...</MenuItem>
-                    {componentsData?.components.map((component) => {
-                      const availableStock = component.current_stock - component.reserved_stock;
-                      return (
-                        <MenuItem key={component.id} value={component.id}>
-                          {component.name} - {component.code} (Disponible: {availableStock})
-                        </MenuItem>
-                      );
-                    })}
-                  </TextField>
+                    }}
+                    render={({ field: { onChange, value }, fieldState: { error } }) => (
+                      <Autocomplete
+                        options={componentsData?.components || []}
+                        getOptionLabel={(option) => `${option.code} - ${option.name}`}
+                        value={componentsData?.components.find(c => c.id === value) || null}
+                        onChange={(event, newValue) => {
+                          onChange(newValue ? newValue.id : '');
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Componente"
+                            error={!!error}
+                            helperText={error?.message}
+                            placeholder="Buscar por código o nombre..."
+                          />
+                        )}
+                        renderOption={(props, option) => {
+                          const availableStock = option.current_stock - option.reserved_stock;
+                          return (
+                            <Box component="li" {...props}>
+                              <Box sx={{ width: '100%' }}>
+                                <Typography variant="body2">
+                                  <strong>{option.code}</strong> - {option.name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Disponible: {availableStock} {option.unit_symbol} 
+                                  {availableStock <= option.min_stock && (
+                                    <span style={{color: 'orange', marginLeft: '8px'}}>
+                                      ⚠️ Stock bajo
+                                    </span>
+                                  )}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          );
+                        }}
+                        filterOptions={(options, { inputValue }) => {
+                          if (!inputValue) return options;
+                          
+                          const searchTerm = inputValue.toLowerCase();
+                          return options.filter(option => 
+                            option.code.toLowerCase().includes(searchTerm) ||
+                            option.name.toLowerCase().includes(searchTerm)
+                          );
+                        }}
+                        noOptionsText="No se encontraron componentes"
+                      />
+                    )}
+                  />
                 </Grid>
               )}
               {/* Solo mostrar cantidad si no estamos usando receta */}
@@ -846,23 +923,62 @@ export default function Movements() {
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Componente"
-                  select
-                  {...registerReservation('component_id', {
+                <Controller
+                  name="component_id"
+                  control={controlReservation}
+                  rules={{
                     required: 'El componente es requerido',
-                  })}
-                  error={!!reservationErrors.component_id}
-                  helperText={reservationErrors.component_id?.message as string}
-                >
-                  <MenuItem value="">Seleccionar...</MenuItem>
-                  {componentsData?.components.map((component) => (
-                    <MenuItem key={component.id} value={component.id}>
-                      {component.name} - Stock disponible: {component.current_stock - component.reserved_stock}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  }}
+                  render={({ field: { onChange, value }, fieldState: { error } }) => (
+                    <Autocomplete
+                      options={componentsData?.components || []}
+                      getOptionLabel={(option) => `${option.code} - ${option.name}`}
+                      value={componentsData?.components.find(c => c.id === value) || null}
+                      onChange={(event, newValue) => {
+                        onChange(newValue ? newValue.id : '');
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Componente"
+                          error={!!error}
+                          helperText={error?.message}
+                          placeholder="Buscar por código o nombre..."
+                        />
+                      )}
+                      renderOption={(props, option) => {
+                        const availableStock = option.current_stock - option.reserved_stock;
+                        return (
+                          <Box component="li" {...props}>
+                            <Box sx={{ width: '100%' }}>
+                              <Typography variant="body2">
+                                <strong>{option.code}</strong> - {option.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Stock disponible: {availableStock} {option.unit_symbol}
+                                {availableStock <= 0 && (
+                                  <span style={{color: 'red', marginLeft: '8px'}}>
+                                    ❌ Sin stock
+                                  </span>
+                                )}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        );
+                      }}
+                      filterOptions={(options, { inputValue }) => {
+                        if (!inputValue) return options;
+                        
+                        const searchTerm = inputValue.toLowerCase();
+                        return options.filter(option => 
+                          option.code.toLowerCase().includes(searchTerm) ||
+                          option.name.toLowerCase().includes(searchTerm)
+                        );
+                      }}
+                      noOptionsText="No se encontraron componentes"
+                    />
+                  )}
+                />
               </Grid>
               <Grid item xs={12}>
                 <TextField
@@ -1260,6 +1376,118 @@ export default function Movements() {
             disabled={clearMovementsMutation.isPending}
           >
             {clearMovementsMutation.isPending ? 'Eliminando...' : 'Eliminar Todo'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog para ver detalles del movimiento */}
+      <Dialog
+        open={openDetailsDialog}
+        onClose={() => setOpenDetailsDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Detalles del Movimiento
+        </DialogTitle>
+        <DialogContent>
+          {selectedMovement && (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Fecha
+                </Typography>
+                <Typography variant="body1">
+                  {format(new Date(selectedMovement.created_at), 'dd/MM/yyyy HH:mm')}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Tipo de Movimiento
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ 
+                    color: selectedMovement.operation === 'IN' ? '#22c55e' : '#ef4444', 
+                    display: 'flex' 
+                  }}>
+                    {selectedMovement.operation === 'IN' ? <ArrowDownward /> : <ArrowUpward />}
+                  </Box>
+                  <Typography sx={{ 
+                    color: selectedMovement.operation === 'IN' ? '#22c55e' : '#ef4444',
+                    fontWeight: 500 
+                  }}>
+                    {selectedMovement.movement_type_name}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Componente
+                </Typography>
+                <Typography variant="body1">
+                  {selectedMovement.component_name}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Cantidad
+                </Typography>
+                <Typography variant="body1">
+                  {selectedMovement.quantity}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Costo Unitario
+                </Typography>
+                <Typography variant="body1">
+                  ${selectedMovement.unit_cost || '0.00'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Costo Total
+                </Typography>
+                <Typography variant="body1">
+                  ${selectedMovement.total_cost || '0.00'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Número de Referencia
+                </Typography>
+                <Typography variant="body1">
+                  {selectedMovement.reference_number || '-'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Usuario
+                </Typography>
+                <Typography variant="body1">
+                  {selectedMovement.username || 
+                   `${selectedMovement.first_name || ''} ${selectedMovement.last_name || ''}`.trim() ||
+                   'Usuario desconocido'}
+                </Typography>
+              </Grid>
+              {selectedMovement.notes && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Notas
+                  </Typography>
+                  <Paper sx={{ p: 2, backgroundColor: 'background.default' }}>
+                    <Typography variant="body1">
+                      {selectedMovement.notes}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              )}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDetailsDialog(false)}>
+            Cerrar
           </Button>
         </DialogActions>
       </Dialog>

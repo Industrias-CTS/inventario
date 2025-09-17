@@ -30,10 +30,10 @@ import {
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { deliveriesService, CreateDeliveryData } from '../services/deliveries.service';
 import { componentsService } from '../services/components.service';
-import { Delivery, Component } from '../types';
+import { Delivery, Component, DeliveryWithItems } from '../types';
 
 interface DeliveryFormProps {
-  delivery?: Delivery | null;
+  delivery?: Delivery | DeliveryWithItems | null;
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -94,17 +94,50 @@ export default function DeliveryForm({ delivery, onSuccess, onCancel }: Delivery
 
   useEffect(() => {
     if (delivery) {
+      // Manejar tanto Delivery como DeliveryWithItems
+      const deliveryData = 'delivery' in delivery ? delivery.delivery : delivery;
+      const deliveryItems = 'items' in delivery ? delivery.items : [];
+      
       setFormData({
-        recipient_name: delivery.recipient_name,
-        recipient_company: delivery.recipient_company || '',
-        recipient_id: delivery.recipient_id || '',
-        delivery_date: delivery.delivery_date.split('T')[0],
-        delivery_address: delivery.delivery_address || '',
-        phone: delivery.phone || '',
-        email: delivery.email || '',
-        notes: delivery.notes || '',
-        status: delivery.status,
+        recipient_name: deliveryData.recipient_name,
+        recipient_company: deliveryData.recipient_company || '',
+        recipient_id: deliveryData.recipient_id || '',
+        delivery_date: deliveryData.delivery_date.split('T')[0],
+        delivery_address: deliveryData.delivery_address || '',
+        phone: deliveryData.phone || '',
+        email: deliveryData.email || '',
+        notes: deliveryData.notes || '',
+        status: deliveryData.status,
       });
+      
+      // Cargar items si existen
+      if (deliveryItems && deliveryItems.length > 0) {
+        const loadedItems = deliveryItems.map((item: any) => ({
+          id: item.id,
+          component_id: item.component_id,
+          component: {
+            id: item.component_id,
+            code: item.component_code,
+            name: item.component_name,
+            description: item.component_description,
+            unit_id: item.unit_id || '',
+            min_stock: 0,
+            max_stock: 0,
+            current_stock: 0,
+            reserved_stock: 0,
+            location: '',
+            cost_price: item.unit_price || 0,
+            is_active: true,
+            created_at: '',
+            updated_at: ''
+          } as Component,
+          quantity: item.quantity,
+          serial_numbers: item.serial_numbers || '',
+          unit_price: item.unit_price,
+          notes: item.notes || '',
+        }));
+        setItems(loadedItems);
+      }
     }
   }, [delivery]);
 
@@ -195,8 +228,9 @@ export default function DeliveryForm({ delivery, onSuccess, onCancel }: Delivery
 
     try {
       if (delivery) {
+        const deliveryData = 'delivery' in delivery ? delivery.delivery : delivery;
         await updateMutation.mutateAsync({
-          id: delivery.id,
+          id: deliveryData.id,
           data: formData,
         });
       } else {
@@ -357,20 +391,23 @@ export default function DeliveryForm({ delivery, onSuccess, onCancel }: Delivery
                             updateItem(index, 'unit_price', newValue.cost_price || 0);
                           }
                         }}
-                        renderOption={(props, option) => (
-                          <Box 
-                            component="li" 
-                            {...props}
-                            sx={{ 
-                              py: 1.5,
-                              px: 2,
-                              fontSize: '0.95rem',
-                              '&:hover': {
-                                backgroundColor: 'primary.light',
-                                color: 'primary.contrastText'
-                              }
-                            }}
-                          >
+                        renderOption={(props, option) => {
+                          const { key, ...otherProps } = props;
+                          return (
+                            <Box 
+                              key={key}
+                              component="li" 
+                              {...otherProps}
+                              sx={{ 
+                                py: 1.5,
+                                px: 2,
+                                fontSize: '0.95rem',
+                                '&:hover': {
+                                  backgroundColor: 'primary.light',
+                                  color: 'primary.contrastText'
+                                }
+                              }}
+                            >
                             <Box>
                               <Box sx={{ fontWeight: 'bold', color: 'primary.main' }}>
                                 {option.code}
@@ -388,7 +425,8 @@ export default function DeliveryForm({ delivery, onSuccess, onCancel }: Delivery
                               </Box>
                             </Box>
                           </Box>
-                        )}
+                          );
+                        }}
                         renderInput={(params) => (
                           <TextField
                             {...params}

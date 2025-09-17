@@ -1,5 +1,5 @@
 export const config = {
-  API_URL: process.env.REACT_APP_API_URL || 'http://localhost:3001/api',
+  API_URL: process.env.REACT_APP_API_URL || 'http://34.198.163.51/api',
   APP_NAME: process.env.REACT_APP_NAME || 'Sistema de Inventario',
   VERSION: process.env.REACT_APP_VERSION || '1.0.0',
   ENVIRONMENT: process.env.NODE_ENV || 'development',
@@ -31,7 +31,8 @@ export const config = {
     RECIPES: '/recipes',
     REPORTS: '/reports',
     USERS: '/users',
-    PROJECTION: '/projection'
+    PROJECTION: '/projection',
+    DELIVERIES: '/deliveries'
   }
 };
 
