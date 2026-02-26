@@ -202,6 +202,7 @@ export default function Movements() {
     reset: resetMovement,
     control: controlMovement,
     watch: watchMovement,
+    setValue: setValueMovement,
     formState: { errors: movementErrors },
   } = useForm();
 
@@ -755,6 +756,11 @@ export default function Movements() {
                         value={componentsData?.components.find(c => c.id === value) || null}
                         onChange={(event, newValue) => {
                           onChange(newValue ? newValue.id : '');
+                          if (newValue?.cost_price) {
+                            setValueMovement('unit_cost', newValue.cost_price);
+                          } else {
+                            setValueMovement('unit_cost', 0);
+                          }
                         }}
                         renderInput={(params) => (
                           <TextField
@@ -826,13 +832,13 @@ export default function Movements() {
                 </Grid>
               )}
               
-              {/* Mostrar información de stock para movimientos de salida */}
-              {!useRecipe && selectedMovementType?.operation === 'OUT' && selectedComponentData && (
+              {/* Mostrar información del componente seleccionado */}
+              {!useRecipe && selectedComponentData && (
                 <Grid item xs={12}>
-                  <Alert 
+                  <Alert
                     severity={
-                      selectedComponentData.current_stock - selectedComponentData.reserved_stock <= 0 
-                        ? 'error' 
+                      selectedComponentData.current_stock - selectedComponentData.reserved_stock <= 0
+                        ? 'error'
                         : selectedComponentData.current_stock - selectedComponentData.reserved_stock <= selectedComponentData.min_stock
                         ? 'warning'
                         : 'info'
@@ -841,13 +847,14 @@ export default function Movements() {
                   >
                     <strong>{selectedComponentData.name}</strong>
                     <br />
-                    Stock actual: {selectedComponentData.current_stock} | 
-                    Stock reservado: {selectedComponentData.reserved_stock} | 
+                    Stock actual: {selectedComponentData.current_stock} |
+                    Reservado: {selectedComponentData.reserved_stock} |
                     <strong> Disponible: {selectedComponentData.current_stock - selectedComponentData.reserved_stock}</strong>
+                    {' | '}Precio: ${selectedComponentData.cost_price || 0}
                     {selectedComponentData.current_stock - selectedComponentData.reserved_stock <= selectedComponentData.min_stock && (
                       <>
                         <br />
-                        <span style={{color: 'orange'}}>⚠️ Stock por debajo del mínimo ({selectedComponentData.min_stock})</span>
+                        <span style={{color: 'orange'}}>Stock por debajo del minimo ({selectedComponentData.min_stock})</span>
                       </>
                     )}
                   </Alert>
@@ -860,7 +867,11 @@ export default function Movements() {
                     fullWidth
                     label="Costo Unitario"
                     type="number"
+                    inputProps={{ step: 'any' }}
                     {...registerMovement('unit_cost', { min: 0 })}
+                    helperText={selectedComponentData
+                      ? `Precio registrado: $${selectedComponentData.cost_price || 0}`
+                      : ''}
                   />
                 </Grid>
               )}
