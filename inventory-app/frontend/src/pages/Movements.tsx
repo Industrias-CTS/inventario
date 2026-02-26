@@ -334,54 +334,26 @@ export default function Movements() {
   ];
 
   const reservationColumns: GridColDef[] = [
-    {
-      field: 'reserved_at',
-      headerName: 'Fecha Reserva',
-      width: 150,
-      valueFormatter: (params) =>
-        format(new Date(params.value), 'dd/MM/yyyy HH:mm'),
-    },
+    { field: 'component_code', headerName: 'Código', width: 130 },
     { field: 'component_name', headerName: 'Componente', flex: 1, minWidth: 200 },
-    { field: 'quantity', headerName: 'Cantidad', width: 100, type: 'number' },
+    { field: 'current_stock', headerName: 'Stock Total', width: 120, type: 'number' },
+    { field: 'reserved_stock', headerName: 'Reservado', width: 120, type: 'number',
+      renderCell: (params) => (
+        <Chip label={params.value} color="warning" size="small" variant="outlined" />
+      ),
+    },
     {
-      field: 'status',
-      headerName: 'Estado',
+      field: 'available_stock',
+      headerName: 'Disponible',
       width: 120,
+      type: 'number',
       renderCell: (params) => {
-        const statusColors = {
-          active: 'warning',
-          completed: 'success',
-          cancelled: 'error',
-        };
-        return (
-          <Chip
-            label={params.value}
-            color={statusColors[params.value as keyof typeof statusColors] as any}
-            size="small"
-          />
-        );
+        const available = params.value;
+        const color = available <= 0 ? 'error' : 'success';
+        return <Chip label={available} color={color} size="small" variant="outlined" />;
       },
     },
-    { field: 'reference', headerName: 'Referencia', width: 150 },
-    {
-      field: 'expires_at',
-      headerName: 'Expira',
-      width: 150,
-      valueFormatter: (params) =>
-        params.value ? format(new Date(params.value), 'dd/MM/yyyy') : '-',
-    },
-    {
-      field: 'user',
-      headerName: 'Reservado por',
-      width: 150,
-      valueGetter: (params) => {
-        if (params.row.username) return params.row.username;
-        if (params.row.first_name || params.row.last_name) {
-          return `${params.row.first_name || ''} ${params.row.last_name || ''}`.trim();
-        }
-        return 'Usuario desconocido';
-      },
-    },
+    { field: 'unit_symbol', headerName: 'Unidad', width: 80 },
   ];
 
   const onSubmitMovement = (data: any) => {
@@ -555,6 +527,7 @@ export default function Movements() {
           <DataGrid
             rows={reservationsData?.reservations || []}
             columns={reservationColumns}
+            getRowId={(row) => row.component_id}
             loading={reservationsLoading}
             autoHeight
             pageSizeOptions={[10, 25, 50]}
@@ -563,7 +536,7 @@ export default function Movements() {
                 paginationModel: { pageSize: 25 },
               },
               sorting: {
-                sortModel: [{ field: 'reserved_at', sort: 'desc' }],
+                sortModel: [{ field: 'component_name', sort: 'asc' }],
               },
             }}
             sx={{
@@ -580,6 +553,7 @@ export default function Movements() {
             <DataGrid
               rows={reservationsData?.reservations || []}
               columns={reservationColumns}
+              getRowId={(row) => row.component_id}
               loading={reservationsLoading}
               autoHeight
               pageSizeOptions={[10, 25, 50]}
@@ -588,7 +562,7 @@ export default function Movements() {
                   paginationModel: { pageSize: 25 },
                 },
                 sorting: {
-                  sortModel: [{ field: 'reserved_at', sort: 'desc' }],
+                  sortModel: [{ field: 'component_name', sort: 'asc' }],
                 },
               }}
               sx={{
