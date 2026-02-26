@@ -210,8 +210,18 @@ export default function Movements() {
     handleSubmit: handleSubmitReservation,
     reset: resetReservation,
     control: controlReservation,
+    watch: watchReservation,
     formState: { errors: reservationErrors },
   } = useForm();
+
+  // Watch para validación en tiempo real de reservas
+  const selectedReservationComponentId = watchReservation('component_id');
+  const selectedReservationComponent = componentsData?.components.find(
+    (c: any) => c.id === selectedReservationComponentId
+  );
+  const reservationAvailableStock = selectedReservationComponent
+    ? selectedReservationComponent.current_stock - (selectedReservationComponent.reserved_stock || 0)
+    : 0;
 
   const {
     register: registerInvoice,
@@ -988,9 +998,21 @@ export default function Movements() {
                   {...registerReservation('quantity', {
                     required: 'La cantidad es requerida',
                     min: { value: 0.01, message: 'La cantidad debe ser mayor a 0' },
+                    validate: (value: number) => {
+                      if (selectedReservationComponent && value > reservationAvailableStock) {
+                        return `Stock disponible insuficiente. Disponible: ${reservationAvailableStock}`;
+                      }
+                      return true;
+                    },
                   })}
                   error={!!reservationErrors.quantity}
-                  helperText={reservationErrors.quantity?.message as string}
+                  helperText={
+                    (reservationErrors.quantity?.message as string) ||
+                    (selectedReservationComponent
+                      ? `Stock disponible: ${reservationAvailableStock}`
+                      : '')
+                  }
+                  disabled={!selectedReservationComponent || reservationAvailableStock <= 0}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -1035,7 +1057,7 @@ export default function Movements() {
             <Button
               type="submit"
               variant="contained"
-              disabled={createReservationMutation.isPending}
+              disabled={createReservationMutation.isPending || !selectedReservationComponent || reservationAvailableStock <= 0}
             >
               Crear Reserva
             </Button>

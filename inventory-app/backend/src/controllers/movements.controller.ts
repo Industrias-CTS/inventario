@@ -119,107 +119,107 @@ export const createMovement = async (req: Request, res: Response) => {
       return;
     }
 
-    const component = await db.get(
-      'SELECT * FROM components WHERE id = ?',
-      [component_id]
-    );
-
-    if (!component) {
-      if (!res.headersSent) {
-        return res.status(400).json({ error: 'Componente no encontrado' });
-      }
-      return;
-    }
-
     const operation = TYPE_TO_OPERATION[movementType] || 'IN';
 
-    // Ejecutar transacción sin anidamiento
-    let newStock = component.current_stock;
-    let newReservedStock = component.reserved_stock || 0;
-    let newCostPrice = component.cost_price || 0;
-    
-    // Para salidas, usar el cost_price del componente si no se especifica unit_cost
-    let finalUnitCost = unit_cost;
-    if (operation === 'OUT' && (!unit_cost || unit_cost === 0)) {
-      finalUnitCost = component.cost_price || 0;
-    }
+    // Toda la operación dentro de una transacción para evitar condiciones de carrera
+    await db.transaction(async () => {
+      // Leer componente DENTRO de la transacción
+      const component = await db.get(
+        'SELECT * FROM components WHERE id = ?',
+        [component_id]
+      );
 
-    switch (operation) {
-      case 'IN':
-        newStock += Number(quantity);
-        // NUEVA FUNCIONALIDAD: Actualizar el precio del componente si el nuevo precio es mayor
-        if (unit_cost > newCostPrice) {
-          newCostPrice = unit_cost;
-        }
-        break;
-      case 'OUT':
-        if (component.current_stock < quantity) {
-          throw new Error('Stock insuficiente');
-        }
-        newStock -= Number(quantity);
-        break;
-      case 'RESERVE':
-        if ((component.current_stock - component.reserved_stock) < quantity) {
-          throw new Error('Stock disponible insuficiente para reservar');
-        }
-        newReservedStock += Number(quantity);
-        break;
-      case 'RELEASE':
-        if (component.reserved_stock < quantity) {
-          throw new Error('No hay suficiente stock reservado para liberar');
-        }
-        newReservedStock -= Number(quantity);
-        break;
-    }
+      if (!component) {
+        throw new Error('Componente no encontrado');
+      }
 
-    await db.run(
-      'UPDATE components SET current_stock = ?, reserved_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?',
-      [newStock, newReservedStock, newCostPrice, new Date().toISOString(), component_id]
-    );
+      let newStock = component.current_stock;
+      let newReservedStock = component.reserved_stock || 0;
+      let newCostPrice = component.cost_price || 0;
 
-    const movementId = generateId();
-    const now = new Date().toISOString();
+      // Para salidas, usar el cost_price del componente si no se especifica unit_cost
+      let finalUnitCost = unit_cost;
+      if (operation === 'OUT' && (!unit_cost || unit_cost === 0)) {
+        finalUnitCost = component.cost_price || 0;
+      }
 
-    await db.run(
-      `INSERT INTO movements (
-        id, type, component_id, quantity, 
-        unit_cost, total_cost, reference, notes, user_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        movementId, movementType, component_id, quantity,
-        finalUnitCost, quantity * finalUnitCost, reference_number, notes, userId, now
-      ]
-    );
+      switch (operation) {
+        case 'IN':
+          newStock += Number(quantity);
+          if (unit_cost > newCostPrice) {
+            newCostPrice = unit_cost;
+          }
+          break;
+        case 'OUT':
+          if (component.current_stock < quantity) {
+            throw new Error('Stock insuficiente');
+          }
+          newStock -= Number(quantity);
+          break;
+        case 'RESERVE':
+          const availableForReserve = component.current_stock - (component.reserved_stock || 0);
+          if (availableForReserve < quantity) {
+            throw new Error(`Stock disponible insuficiente para reservar. Disponible: ${availableForReserve}, solicitado: ${quantity}`);
+          }
+          newReservedStock += Number(quantity);
+          break;
+        case 'RELEASE':
+          if ((component.reserved_stock || 0) < quantity) {
+            throw new Error('No hay suficiente stock reservado para liberar');
+          }
+          newReservedStock -= Number(quantity);
+          break;
+      }
 
-    const newMovement = await db.get(
-      `SELECT 
-        m.*,
-        m.type as movement_type_name,
-        m.reference as reference_number,
-        CASE 
-          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-          WHEN m.type IN ('salida') THEN 'OUT'
-          WHEN m.type IN ('reserva') THEN 'RESERVE'
-          WHEN m.type IN ('liberacion') THEN 'RELEASE'
-          ELSE 'IN'
-        END as operation,
-        c.name as component_name
-      FROM movements m
-      JOIN components c ON m.component_id = c.id
-      WHERE m.id = ?`,
-      [movementId]
-    );
+      await db.run(
+        'UPDATE components SET current_stock = ?, reserved_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?',
+        [newStock, newReservedStock, newCostPrice, new Date().toISOString(), component_id]
+      );
 
-    if (!res.headersSent) {
-      res.status(201).json({
-        message: 'Movimiento registrado exitosamente',
-        movement: {
-          ...newMovement
-        },
-        newStock,
-        newReservedStock
-      });
-    }
+      const movementId = generateId();
+      const now = new Date().toISOString();
+
+      await db.run(
+        `INSERT INTO movements (
+          id, type, component_id, quantity,
+          unit_cost, total_cost, reference, notes, user_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          movementId, movementType, component_id, quantity,
+          finalUnitCost, quantity * finalUnitCost, reference_number, notes, userId, now
+        ]
+      );
+
+      const newMovement = await db.get(
+        `SELECT
+          m.*,
+          m.type as movement_type_name,
+          m.reference as reference_number,
+          CASE
+            WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
+            WHEN m.type IN ('salida') THEN 'OUT'
+            WHEN m.type IN ('reserva') THEN 'RESERVE'
+            WHEN m.type IN ('liberacion') THEN 'RELEASE'
+            ELSE 'IN'
+          END as operation,
+          c.name as component_name
+        FROM movements m
+        JOIN components c ON m.component_id = c.id
+        WHERE m.id = ?`,
+        [movementId]
+      );
+
+      if (!res.headersSent) {
+        res.status(201).json({
+          message: 'Movimiento registrado exitosamente',
+          movement: {
+            ...newMovement
+          },
+          newStock,
+          newReservedStock
+        });
+      }
+    });
   } catch (error: any) {
     console.error('Error al crear movimiento:', error);
     if (!res.headersSent) {
@@ -398,23 +398,25 @@ export const createReservation = async (req: Request, res: Response) => {
     const { component_id, quantity, notes } = req.body;
     const userId = req.user?.userId;
 
-    const component = await db.get(
-      'SELECT * FROM components WHERE id = ?',
-      [component_id]
-    );
-
-    if (!component) {
-      return res.status(400).json({ error: 'Componente no encontrado' });
-    }
-
-    const availableStock = component.current_stock - (component.reserved_stock || 0);
-    if (availableStock < quantity) {
-      return res.status(400).json({ error: 'Stock disponible insuficiente para reservar' });
-    }
-
+    // Toda la operación dentro de una transacción para evitar condiciones de carrera
     await db.transaction(async () => {
+      // Leer componente DENTRO de la transacción
+      const component = await db.get(
+        'SELECT * FROM components WHERE id = ?',
+        [component_id]
+      );
+
+      if (!component) {
+        throw new Error('Componente no encontrado');
+      }
+
+      const availableStock = component.current_stock - (component.reserved_stock || 0);
+      if (availableStock < Number(quantity)) {
+        throw new Error(`Stock disponible insuficiente para reservar. Disponible: ${availableStock}, solicitado: ${quantity}`);
+      }
+
       const newReservedStock = (component.reserved_stock || 0) + Number(quantity);
-      
+
       await db.run(
         'UPDATE components SET reserved_stock = ?, updated_at = ? WHERE id = ?',
         [newReservedStock, new Date().toISOString(), component_id]
