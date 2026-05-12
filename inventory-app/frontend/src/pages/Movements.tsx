@@ -1156,8 +1156,12 @@ export default function Movements() {
         </DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mt: 2 }}>
-            Esta acción eliminará TODOS los movimientos registrados en el sistema.
+            Esta acción eliminará TODOS los registros de movimientos (entradas y salidas).
             Esta operación no se puede deshacer.
+          </Alert>
+          <Alert severity="info" sx={{ mt: 1 }}>
+            Las <strong>recetas</strong>, componentes y demás datos del inventario
+            <strong> NO se verán afectados</strong>. Solo se borra el historial de movimientos.
           </Alert>
           <Typography sx={{ mt: 2 }}>
             ¿Está seguro que desea eliminar todos los movimientos?
