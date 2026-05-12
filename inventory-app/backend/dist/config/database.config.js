@@ -47,22 +47,31 @@ class DatabaseManager {
     async transaction(callback) {
         if (!this.db)
             await this.initialize();
-        if (this.db.type === 'sqlite') {
-            const db = await database_sqlite_1.sqliteDb.get('SELECT 1', []);
-            if (!db)
-                throw new Error('Database connection failed');
-            try {
-                await this.run('BEGIN TRANSACTION');
-                const result = await callback();
-                await this.run('COMMIT');
-                return result;
-            }
-            catch (error) {
-                await this.run('ROLLBACK');
-                throw error;
-            }
+        try {
+            await this.run('BEGIN TRANSACTION');
         }
-        return callback();
+        catch (beginError) {
+            // Si ya hay una transacción activa, hacer ROLLBACK primero
+            try {
+                await this.run('ROLLBACK');
+            }
+            catch (_) { }
+            await this.run('BEGIN TRANSACTION');
+        }
+        try {
+            const result = await callback();
+            await this.run('COMMIT');
+            return result;
+        }
+        catch (error) {
+            try {
+                await this.run('ROLLBACK');
+            }
+            catch (rollbackError) {
+                console.error('Error en ROLLBACK:', rollbackError);
+            }
+            throw error;
+        }
     }
 }
 exports.db = new DatabaseManager();

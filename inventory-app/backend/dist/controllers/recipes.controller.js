@@ -2,7 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.executeRecipe = exports.deleteRecipe = exports.updateRecipe = exports.createRecipe = exports.getRecipeById = exports.getRecipes = void 0;
 const database_config_1 = require("../config/database.config");
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const crypto_1 = require("crypto");
+const generateId = () => (0, crypto_1.randomUUID)();
 const getRecipes = async (req, res) => {
     try {
         const { is_active = 'true', search } = req.query;
@@ -226,33 +227,23 @@ const executeRecipe = async (req, res) => {
                     throw new Error(`Stock insuficiente para el componente ${ingredient.component_id}`);
                 }
             }
-            const productionMovementTypeId = 'prod001';
-            const consumptionMovementTypeId = 'cons001';
             for (const ingredient of ingredients) {
                 const requiredQuantity = ingredient.quantity * quantity;
                 const movementId = generateId();
                 const now = new Date().toISOString();
-                await database_config_1.db.run(`INSERT INTO movements (
-            id, movement_type_id, component_id, quantity,
-            reference_number, notes, user_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
-                    movementId, consumptionMovementTypeId, ingredient.component_id,
-                    requiredQuantity, reference_number || `RECIPE-${id}`,
-                    notes || `Consumo para receta ${recipe.name}`, userId, now
-                ]);
+                await database_config_1.db.run(`INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, recipe_id, recipe_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [movementId, 'salida', ingredient.component_id, requiredQuantity, 0, 0,
+                    reference_number || `RECIPE-${id}`, notes || `Consumo para receta ${recipe.name}`,
+                    userId, id, recipe.name, now]);
                 await database_config_1.db.run('UPDATE components SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?', [requiredQuantity, now, ingredient.component_id]);
             }
             const outputQuantity = recipe.output_quantity * quantity;
             const outputMovementId = generateId();
             const now = new Date().toISOString();
-            await database_config_1.db.run(`INSERT INTO movements (
-          id, movement_type_id, component_id, quantity,
-          reference_number, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
-                outputMovementId, productionMovementTypeId, recipe.output_component_id,
-                outputQuantity, reference_number || `RECIPE-${id}`,
-                notes || `Producción de receta ${recipe.name}`, userId, now
-            ]);
+            await database_config_1.db.run(`INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, recipe_id, recipe_name, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [outputMovementId, 'entrada', recipe.output_component_id, outputQuantity, 0, 0,
+                reference_number || `RECIPE-${id}`, notes || `Producción de receta ${recipe.name}`,
+                userId, id, recipe.name, now]);
             await database_config_1.db.run('UPDATE components SET current_stock = current_stock + ?, updated_at = ? WHERE id = ?', [outputQuantity, now, recipe.output_component_id]);
             res.json({
                 message: 'Receta ejecutada exitosamente',

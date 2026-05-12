@@ -10,22 +10,16 @@ router.get('/', auth_1.authenticate, movements_controller_1.getMovements);
 router.post('/', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
     (0, express_validator_1.body)('component_id').notEmpty().withMessage('ID de componente es requerido'),
     (0, express_validator_1.body)('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
-    // Validación flexible - acepta movement_type_id O type
     (0, express_validator_1.body)().custom((_, { req }) => {
-        if (!req.body.movement_type_id && !req.body.type) {
-            throw new Error('movement_type_id o type es requerido');
+        if (!req.body.type) {
+            throw new Error('type es requerido');
         }
-        if (req.body.type && !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(req.body.type)) {
-            throw new Error('Tipo de movimiento no válido');
+        if (!['entrada', 'salida'].includes(req.body.type)) {
+            throw new Error('Tipo de movimiento no válido. Valores permitidos: entrada, salida');
         }
         return true;
     }),
 ], validation_1.validateRequest, movements_controller_1.createMovement);
-router.get('/reservations', auth_1.authenticate, movements_controller_1.getReservations);
-router.post('/reservations', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
-    (0, express_validator_1.body)('component_id').notEmpty().withMessage('ID de componente es requerido'),
-    (0, express_validator_1.body)('quantity').isNumeric().isFloat({ gt: 0 }).withMessage('La cantidad debe ser mayor a 0'),
-], validation_1.validateRequest, movements_controller_1.createReservation);
 router.post('/invoice', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
     (0, express_validator_1.body)('reference_number').notEmpty().withMessage('Número de referencia es requerido'),
     (0, express_validator_1.body)('items').isArray({ min: 1 }).withMessage('Debe incluir al menos un item'),
@@ -35,15 +29,17 @@ router.post('/invoice', auth_1.authenticate, (0, auth_1.authorize)('admin', 'use
     (0, express_validator_1.body)('items.*.total_cost').isNumeric().isFloat({ gt: 0 }).withMessage('El costo total debe ser mayor a 0'),
     (0, express_validator_1.body)('shipping_cost').optional().isNumeric().withMessage('El costo de envío debe ser numérico'),
     (0, express_validator_1.body)('shipping_tax').optional().isNumeric().withMessage('Los impuestos de envío deben ser numéricos'),
-    // Validación flexible para facturas - movement_type_id O type opcional
     (0, express_validator_1.body)().custom((_, { req }) => {
-        if (req.body.type && !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(req.body.type)) {
+        if (req.body.type && !['entrada', 'salida'].includes(req.body.type)) {
             throw new Error('Tipo de movimiento no válido');
         }
         return true;
     }),
 ], validation_1.validateRequest, movements_controller_1.createInvoice);
-// Endpoint para limpiar todos los movimientos (solo admin)
+router.post('/bulk', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
+    (0, express_validator_1.body)('type').notEmpty().isIn(['entrada', 'salida']).withMessage('Tipo inválido'),
+    (0, express_validator_1.body)('items').isArray({ min: 1 }).withMessage('Debe incluir al menos un item'),
+], validation_1.validateRequest, movements_controller_1.createBulkMovements);
 router.delete('/clear-all', auth_1.authenticate, (0, auth_1.authorize)('admin'), movements_controller_1.clearAllMovements);
 exports.default = router;
 //# sourceMappingURL=movements.routes.js.map

@@ -10,11 +10,9 @@ const getMovementsReport = async (req, res) => {
         m.id,
         m.created_at,
         m.type as movement_type,
-        CASE 
-          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-          WHEN m.type IN ('salida') THEN 'OUT'
-          WHEN m.type IN ('reserva') THEN 'RESERVE'
-          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+        CASE
+          WHEN m.type = 'entrada' THEN 'IN'
+          WHEN m.type = 'salida' THEN 'OUT'
           ELSE 'IN'
         END as operation,
         m.quantity,
@@ -62,8 +60,6 @@ const getMovementsReport = async (req, res) => {
             totalMovements: movements.length,
             totalIn: 0,
             totalOut: 0,
-            totalReserved: 0,
-            totalReleased: 0,
             totalCost: 0,
             totalValue: 0
         };
@@ -75,12 +71,6 @@ const getMovementsReport = async (req, res) => {
             else if (m.operation === 'OUT') {
                 stats.totalOut += m.quantity;
                 stats.totalValue += m.total_cost || 0;
-            }
-            else if (m.operation === 'RESERVE') {
-                stats.totalReserved += m.quantity;
-            }
-            else if (m.operation === 'RELEASE') {
-                stats.totalReleased += m.quantity;
             }
         });
         res.json({
@@ -115,8 +105,6 @@ const getInventoryReport = async (_req, res) => {
         c.name,
         c.description,
         c.current_stock,
-        c.reserved_stock,
-        (c.current_stock - c.reserved_stock) as available_stock,
         c.min_stock,
         c.max_stock,
         c.cost_price,
@@ -196,11 +184,9 @@ const getComponentReport = async (req, res) => {
         let movementsQuery = `
       SELECT 
         m.*,
-        CASE 
-          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-          WHEN m.type IN ('salida') THEN 'OUT'
-          WHEN m.type IN ('reserva') THEN 'RESERVE'
-          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+        CASE
+          WHEN m.type = 'entrada' THEN 'IN'
+          WHEN m.type = 'salida' THEN 'OUT'
           ELSE 'IN'
         END as operation,
         usr.username,
@@ -226,8 +212,6 @@ const getComponentReport = async (req, res) => {
             totalMovements: movements.length,
             totalIn: 0,
             totalOut: 0,
-            totalReserved: 0,
-            totalReleased: 0,
             netChange: 0,
             averageCost: 0,
             totalCostIn: 0,
@@ -245,12 +229,6 @@ const getComponentReport = async (req, res) => {
             else if (m.operation === 'OUT') {
                 stats.totalOut += m.quantity;
                 stats.totalValueOut += m.total_cost || 0;
-            }
-            else if (m.operation === 'RESERVE') {
-                stats.totalReserved += m.quantity;
-            }
-            else if (m.operation === 'RELEASE') {
-                stats.totalReleased += m.quantity;
             }
         });
         stats.netChange = stats.totalIn - stats.totalOut;

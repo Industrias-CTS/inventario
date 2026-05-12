@@ -1,7 +1,9 @@
 # Node modules
 **/node_modules/
 
-# Keep databases and environment files
-# But exclude database files in wrong locations
+# Environment files (no subir al repo)
+# inventory-app/backend/.env
+
+# Excluir DBs sueltas pero mantener la de datos del backend
 **/inventory.db
-!**/data/inventory.dbinventory-app/backend/data/*.db
+!inventory-app/backend/data/inventory.db
