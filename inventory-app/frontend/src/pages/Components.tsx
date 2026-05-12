@@ -22,7 +22,9 @@ import {
   Search,
   Refresh,
   Visibility,
+  Download,
 } from '@mui/icons-material';
+import * as XLSX from 'xlsx';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { componentsService } from '../services/components.service';
@@ -187,6 +189,32 @@ export default function Components() {
     }
   };
 
+  const handleExportExcel = () => {
+    const components = data?.components || [];
+    const rows = components.map((c) => ({
+      Código: c.code,
+      Nombre: c.name,
+      Descripción: c.description || '',
+      Categoría: c.category_name || '',
+      Unidad: c.unit_name ? `${c.unit_name} (${c.unit_symbol})` : '',
+      'Stock Actual': c.current_stock,
+      'Stock Mínimo': c.min_stock,
+      'Stock Máximo': c.max_stock ?? '',
+      Ubicación: c.location || '',
+      'Precio de Costo': c.cost_price || 0,
+      Activo: c.is_active ? 'Sí' : 'No',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 32 }, { wch: 30 }, { wch: 20 }, { wch: 16 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 8 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Componentes');
+    XLSX.writeFile(wb, `componentes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   const columns: GridColDef[] = [
     { field: 'code', headerName: 'Código', width: 120 },
     { field: 'name', headerName: 'Nombre', flex: 1, minWidth: 200 },
@@ -263,15 +291,25 @@ export default function Components() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Componentes de Inventario</Typography>
-        {isAdmin && (
+        <Box display="flex" gap={1}>
           <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => setOpenDialog(true)}
+            variant="outlined"
+            startIcon={<Download />}
+            onClick={handleExportExcel}
+            disabled={!data?.components?.length}
           >
-            Nuevo Componente
+            Exportar Excel
           </Button>
-        )}
+          {isAdmin && (
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setOpenDialog(true)}
+            >
+              Nuevo Componente
+            </Button>
+          )}
+        </Box>
       </Box>
 
       <Paper sx={{ p: 2, mb: 2 }}>
