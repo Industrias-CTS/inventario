@@ -151,6 +151,50 @@ export default function Dashboard() {
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
+              Componentes con Stock Bajo
+            </Typography>
+            {componentsData?.components &&
+            componentsData.components.filter((c) => c.min_stock > 0 && c.current_stock < c.min_stock)
+              .length > 0 ? (
+              <Box sx={{ maxHeight: 420, overflowY: 'auto' }}>
+                {componentsData.components
+                  .filter((c) => c.min_stock > 0 && c.current_stock < c.min_stock)
+                  .sort((a, b) => (a.current_stock / a.min_stock) - (b.current_stock / b.min_stock))
+                  .map((component) => (
+                    <Box
+                      key={component.id}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        py: 1,
+                        borderBottom: '1px solid #e0e0e0',
+                        '&:last-child': { borderBottom: 'none' },
+                      }}
+                    >
+                      <Box>
+                        <Typography variant="body1">{component.name}</Typography>
+                        <Typography variant="body2" color="textSecondary">
+                          {component.code} · {component.category_name || 'Sin categoría'}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="error" sx={{ fontWeight: 'bold', whiteSpace: 'nowrap', ml: 2 }}>
+                        {component.current_stock} / {component.min_stock} {component.unit_symbol}
+                      </Typography>
+                    </Box>
+                  ))}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="textSecondary">
+                Todos los componentes tienen stock adecuado
+              </Typography>
+            )}
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
               Movimientos Recientes
             </Typography>
             {movementsData?.movements && movementsData.movements.length > 0 ? (
@@ -172,20 +216,15 @@ export default function Dashboard() {
                         {movement.component_name}
                       </Typography>
                       <Typography variant="body2" color="textSecondary">
-                        {movement.movement_type_name} - {movement.quantity}{' '}
-                        unidades
+                        {movement.movement_type_name} · {movement.quantity} uds
                       </Typography>
                     </Box>
                     <Typography
                       variant="body2"
-                      color={
-                        movement.operation === 'IN'
-                          ? 'success.main'
-                          : 'error.main'
-                      }
+                      color={movement.operation === 'IN' ? 'success.main' : 'error.main'}
+                      sx={{ fontWeight: 'bold', whiteSpace: 'nowrap', ml: 1 }}
                     >
-                      {movement.operation === 'IN' ? '+' : '-'}
-                      {movement.quantity}
+                      {movement.operation === 'IN' ? '+' : '-'}{movement.quantity}
                     </Typography>
                   </Box>
                 ))}
@@ -193,50 +232,6 @@ export default function Dashboard() {
             ) : (
               <Typography variant="body2" color="textSecondary">
                 No hay movimientos recientes
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Componentes con Stock Bajo
-            </Typography>
-            {componentsData?.components &&
-            componentsData.components.filter((c) => c.min_stock > 0 && c.current_stock < c.min_stock)
-              .length > 0 ? (
-              <Box>
-                {componentsData.components
-                  .filter((c) => c.min_stock > 0 && c.current_stock < c.min_stock)
-                  .slice(0, 5)
-                  .map((component) => (
-                    <Box
-                      key={component.id}
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        py: 1,
-                        borderBottom: '1px solid #e0e0e0',
-                        '&:last-child': { borderBottom: 'none' },
-                      }}
-                    >
-                      <Box>
-                        <Typography variant="body1">{component.name}</Typography>
-                        <Typography variant="body2" color="textSecondary">
-                          Código: {component.code}
-                        </Typography>
-                      </Box>
-                      <Typography variant="body2" color="error">
-                        {component.current_stock} / {component.min_stock}
-                      </Typography>
-                    </Box>
-                  ))}
-              </Box>
-            ) : (
-              <Typography variant="body2" color="textSecondary">
-                Todos los componentes tienen stock adecuado
               </Typography>
             )}
           </Paper>
