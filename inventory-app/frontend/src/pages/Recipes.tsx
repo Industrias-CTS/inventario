@@ -21,6 +21,8 @@ import {
   TableRow,
   Card,
   CardContent,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import {
@@ -36,8 +38,10 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form';
+import { format } from 'date-fns';
 import { recipesService } from '../services/recipes.service';
 import { componentsService } from '../services/components.service';
+import { movementsService } from '../services/movements.service';
 import { authService } from '../services/auth.service';
 import { Recipe } from '../types';
 
@@ -58,6 +62,7 @@ export default function Recipes() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState(false);
+  const [recipeDialogTab, setRecipeDialogTab] = useState(0);
   const [loadingRecipe, setLoadingRecipe] = useState(false);
   const [ingredientCosts, setIngredientCosts] = useState<{ [key: number]: { cost: number; total: number } }>({});
   const [totalRecipeCost, setTotalRecipeCost] = useState(0);
@@ -75,6 +80,12 @@ export default function Recipes() {
   const { data: componentsData } = useQuery({
     queryKey: ['components'],
     queryFn: () => componentsService.getComponents({ is_active: true }),
+  });
+
+  const { data: recipeMovementsData } = useQuery({
+    queryKey: ['recipe-movements', selectedRecipe?.id],
+    queryFn: () => movementsService.getMovements({ recipe_id: selectedRecipe!.id }),
+    enabled: !!selectedRecipe?.id && viewMode && recipeDialogTab === 1,
   });
 
   const createMutation = useMutation({
@@ -390,6 +401,7 @@ export default function Recipes() {
     setOpenDialog(false);
     setSelectedRecipe(null);
     setViewMode(false);
+    setRecipeDialogTab(0);
     reset({
       code: '',
       name: '',
@@ -483,34 +495,39 @@ export default function Recipes() {
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="lg" fullWidth>
         {viewMode ? (
           <>
-            <DialogTitle>Ver Receta</DialogTitle>
+            <DialogTitle>
+              {selectedRecipe?.name}
+              <Typography variant="body2" color="textSecondary">Código: {selectedRecipe?.code}</Typography>
+            </DialogTitle>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
+              <Tabs value={recipeDialogTab} onChange={(_, v) => setRecipeDialogTab(v)}>
+                <Tab label="Ingredientes" />
+                <Tab label="Historial de Movimientos" />
+              </Tabs>
+            </Box>
             <DialogContent>
-              {selectedRecipe && (
+              {selectedRecipe && recipeDialogTab === 0 && (
                 <Grid container spacing={3} sx={{ mt: 1 }}>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={5}>
                     <Card>
                       <CardContent>
-                        <Typography variant="h6" gutterBottom>
-                          Información General
-                        </Typography>
+                        <Typography variant="h6" gutterBottom>Información General</Typography>
                         <Typography><strong>Código:</strong> {selectedRecipe.code}</Typography>
                         <Typography><strong>Nombre:</strong> {selectedRecipe.name}</Typography>
                         {selectedRecipe.description && (
                           <Typography><strong>Descripción:</strong> {selectedRecipe.description}</Typography>
                         )}
                         <Typography>
-                          <strong>Producto Final:</strong> {selectedRecipe.output_component_name} 
-                          ({selectedRecipe.output_quantity} {selectedRecipe.output_unit_symbol})
+                          <strong>Producto Final:</strong> {(selectedRecipe as any).output_component_name}
+                          {' '}({selectedRecipe.output_quantity} {(selectedRecipe as any).output_unit_symbol})
                         </Typography>
                       </CardContent>
                     </Card>
                   </Grid>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={7}>
                     <Card>
                       <CardContent>
-                        <Typography variant="h6" gutterBottom>
-                          Ingredientes
-                        </Typography>
+                        <Typography variant="h6" gutterBottom>Ingredientes</Typography>
                         <TableContainer>
                           <Table size="small">
                             <TableHead>
@@ -523,40 +540,22 @@ export default function Recipes() {
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {selectedRecipe.ingredients?.map((ingredient) => (
+                              {(selectedRecipe as any).ingredients?.map((ingredient: any) => (
                                 <TableRow key={ingredient.id}>
                                   <TableCell>{ingredient.component_name}</TableCell>
                                   <TableCell align="right">{ingredient.quantity}</TableCell>
                                   <TableCell>{ingredient.unit_symbol}</TableCell>
-                                  <TableCell align="right">
-                                    ${ingredient.cost_price?.toFixed(2) || '0.00'}
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    ${ingredient.ingredient_cost?.toFixed(2) || '0.00'}
-                                  </TableCell>
+                                  <TableCell align="right">${ingredient.cost_price?.toFixed(2) || '0.00'}</TableCell>
+                                  <TableCell align="right">${ingredient.ingredient_cost?.toFixed(2) || '0.00'}</TableCell>
                                 </TableRow>
                               ))}
                               <TableRow>
                                 <TableCell colSpan={4} align="right">
-                                  <Typography variant="subtitle1" fontWeight="bold">
-                                    Costo Total de la Receta:
-                                  </Typography>
+                                  <Typography variant="subtitle1" fontWeight="bold">Costo Total:</Typography>
                                 </TableCell>
                                 <TableCell align="right">
                                   <Typography variant="subtitle1" fontWeight="bold" color="secondary">
-                                    ${selectedRecipe.total_cost?.toFixed(2) || '0.00'}
-                                  </Typography>
-                                </TableCell>
-                              </TableRow>
-                              <TableRow>
-                                <TableCell colSpan={4} align="right">
-                                  <Typography variant="body2">
-                                    Costo por {selectedRecipe.output_unit_symbol}:
-                                  </Typography>
-                                </TableCell>
-                                <TableCell align="right">
-                                  <Typography variant="body2" color="primary">
-                                    ${selectedRecipe.unit_cost?.toFixed(2) || '0.00'}
+                                    ${(selectedRecipe as any).total_cost?.toFixed(2) || '0.00'}
                                   </Typography>
                                 </TableCell>
                               </TableRow>
@@ -567,6 +566,49 @@ export default function Recipes() {
                     </Card>
                   </Grid>
                 </Grid>
+              )}
+
+              {selectedRecipe && recipeDialogTab === 1 && (
+                <Box sx={{ mt: 2 }}>
+                  {!recipeMovementsData?.movements?.length ? (
+                    <Typography color="textSecondary">
+                      No hay movimientos registrados para esta receta
+                    </Typography>
+                  ) : (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Fecha</TableCell>
+                            <TableCell>Componente</TableCell>
+                            <TableCell>Tipo</TableCell>
+                            <TableCell align="right">Cantidad</TableCell>
+                            <TableCell>Referencia</TableCell>
+                            <TableCell>Usuario</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {recipeMovementsData.movements.map((m: any) => (
+                            <TableRow key={m.id}>
+                              <TableCell>{format(new Date(m.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
+                              <TableCell>{m.component_name}</TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={m.type}
+                                  size="small"
+                                  color={m.type === 'entrada' ? 'success' : m.type === 'salida' ? 'error' : 'warning'}
+                                />
+                              </TableCell>
+                              <TableCell align="right">{m.quantity}</TableCell>
+                              <TableCell>{m.reference_number || '-'}</TableCell>
+                              <TableCell>{m.username || `${m.first_name || ''} ${m.last_name || ''}`.trim() || '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Box>
               )}
             </DialogContent>
             <DialogActions>

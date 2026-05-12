@@ -28,7 +28,6 @@ import {
   Logout,
   People,
   Timeline,
-  LocalShipping,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -40,7 +39,6 @@ const menuItems = [
   { text: 'Movimientos', icon: <SwapHoriz />, path: '/movements' },
   { text: 'Recetas', icon: <Receipt />, path: '/recipes' },
   { text: 'Proyección', icon: <Timeline />, path: '/projection' },
-  { text: 'Remisiones', icon: <LocalShipping />, path: '/deliveries' },
   { text: 'Reportes', icon: <Assessment />, path: '/reports' },
   { text: 'Usuarios', icon: <People />, path: '/users', adminOnly: true },
 ];

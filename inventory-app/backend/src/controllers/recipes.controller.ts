@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { db } from '../config/database.config';
+import { randomUUID } from 'crypto';
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const generateId = () => randomUUID();
 
 export const getRecipes = async (req: Request, res: Response) => {
   try {
@@ -298,24 +299,17 @@ export const executeRecipe = async (req: Request, res: Response) => {
         }
       }
 
-      const productionMovementTypeId = 'prod001';
-      const consumptionMovementTypeId = 'cons001';
-
       for (const ingredient of ingredients) {
         const requiredQuantity = ingredient.quantity * quantity;
         const movementId = generateId();
         const now = new Date().toISOString();
 
         await db.run(
-          `INSERT INTO movements (
-            id, movement_type_id, component_id, quantity,
-            reference_number, notes, user_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            movementId, consumptionMovementTypeId, ingredient.component_id,
-            requiredQuantity, reference_number || `RECIPE-${id}`,
-            notes || `Consumo para receta ${recipe.name}`, userId, now
-          ]
+          `INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, recipe_id, recipe_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [movementId, 'salida', ingredient.component_id, requiredQuantity, 0, 0,
+           reference_number || `RECIPE-${id}`, notes || `Consumo para receta ${recipe.name}`,
+           userId, id, recipe.name, now]
         );
 
         await db.run(
@@ -329,15 +323,11 @@ export const executeRecipe = async (req: Request, res: Response) => {
       const now = new Date().toISOString();
 
       await db.run(
-        `INSERT INTO movements (
-          id, movement_type_id, component_id, quantity,
-          reference_number, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          outputMovementId, productionMovementTypeId, recipe.output_component_id,
-          outputQuantity, reference_number || `RECIPE-${id}`,
-          notes || `Producción de receta ${recipe.name}`, userId, now
-        ]
+        `INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, recipe_id, recipe_name, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [outputMovementId, 'entrada', recipe.output_component_id, outputQuantity, 0, 0,
+         reference_number || `RECIPE-${id}`, notes || `Producción de receta ${recipe.name}`,
+         userId, id, recipe.name, now]
       );
 
       await db.run(

@@ -4,9 +4,12 @@ import { Movement, Reservation } from '../types';
 export const movementsService = {
   async getMovements(params?: {
     component_id?: string;
-    movement_type_id?: string;
+    type?: string;
     start_date?: string;
     end_date?: string;
+    recipe_id?: string;
+    limit?: number;
+    offset?: number;
   }): Promise<{ movements: Movement[] }> {
     const response = await api.get<{ movements: Movement[] }>('/movements', {
       params,
@@ -15,13 +18,14 @@ export const movementsService = {
   },
 
   async createMovement(data: {
-    movement_type_id: string;
+    type: string;
     component_id: string;
     quantity: number;
     unit_cost?: number;
     reference_number?: string;
     notes?: string;
     recipe_id?: string;
+    recipe_name?: string;
   }): Promise<{
     message: string;
     movement: Movement;
@@ -66,7 +70,7 @@ export const movementsService = {
   },
 
   async createInvoice(data: {
-    movement_type_id: string;
+    type: string;
     reference_number: string;
     notes?: string;
     shipping_cost?: number;
@@ -78,47 +82,9 @@ export const movementsService = {
       total_cost: number;
       unit?: string;
     }>;
-  }): Promise<{
-    message: string;
-    invoice: {
-      reference_number: string;
-      movement_type_id: string;
-      items_count: number;
-      total_items: number;
-      shipping_cost: number;
-      shipping_tax: number;
-      additional_cost_per_unit: number;
-    };
-    movements: Array<Movement & {
-      component_code: string;
-      component_name: string;
-      unit_cost_base: number;
-      additional_cost: number;
-      newStock: number;
-      newReservedStock: number;
-    }>;
-  }> {
-    // Intentar con el servidor principal primero, luego con el alternativo
-    try {
-      const response = await api.post('/movements/invoice', data);
-      return response.data;
-    } catch (error) {
-      // Usar servidor alternativo en puerto 3004
-      const alternativeResponse = await fetch('http://localhost:3004/api/movements/invoice', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify(data),
-      });
-      
-      if (!alternativeResponse.ok) {
-        throw new Error('Error al procesar factura');
-      }
-      
-      return alternativeResponse.json();
-    }
+  }): Promise<any> {
+    const response = await api.post('/movements/invoice', data);
+    return response.data;
   },
 
   async clearAllMovements(): Promise<{

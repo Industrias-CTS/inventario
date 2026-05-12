@@ -114,28 +114,83 @@ async function createTables() {
       expires_at DATETIME,
       completed_at DATETIME
     );
+
+    -- Tabla de recetas
+    CREATE TABLE IF NOT EXISTS recipes (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      output_component_id TEXT REFERENCES components(id),
+      output_quantity REAL DEFAULT 1,
+      production_time REAL,
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Tabla de ingredientes de recetas
+    CREATE TABLE IF NOT EXISTS recipe_ingredients (
+      id TEXT PRIMARY KEY,
+      recipe_id TEXT REFERENCES recipes(id) ON DELETE CASCADE,
+      component_id TEXT REFERENCES components(id),
+      quantity REAL NOT NULL,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Tabla de proyecciones
+    CREATE TABLE IF NOT EXISTS projections (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      is_active BOOLEAN DEFAULT 1,
+      created_by TEXT REFERENCES users(id),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Tabla de recetas en proyecciones
+    CREATE TABLE IF NOT EXISTS projection_recipes (
+      id TEXT PRIMARY KEY,
+      projection_id TEXT REFERENCES projections(id) ON DELETE CASCADE,
+      recipe_id TEXT REFERENCES recipes(id),
+      quantity REAL NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 }
 
 async function runMigrations() {
   if (!db) throw new Error('Database not initialized');
-  
+
   try {
-    // Verificar si la columna sale_price existe
-    const tableInfo = await db.all(`PRAGMA table_info(components)`);
-    const hasSalePrice = tableInfo.some((col: any) => col.name === 'sale_price');
-    
+    // Migración: agregar columna sale_price
+    const componentsInfo = await db.all(`PRAGMA table_info(components)`);
+    const hasSalePrice = componentsInfo.some((col: any) => col.name === 'sale_price');
     if (!hasSalePrice) {
-      console.log('Ejecutando migración: agregando columna sale_price...');
+      console.log('Migración: agregando columna sale_price...');
       await db.run(`ALTER TABLE components ADD COLUMN sale_price REAL DEFAULT 0`);
-      
-      // Actualizar valores existentes con un valor por defecto basado en cost_price
       await db.run(`UPDATE components SET sale_price = cost_price * 2 WHERE sale_price = 0 OR sale_price IS NULL`);
-      console.log('Columna sale_price agregada exitosamente');
+      console.log('Migración sale_price completada');
+    }
+
+    // Migración: agregar columna recipe_id a movements
+    const movementsInfo = await db.all(`PRAGMA table_info(movements)`);
+    const hasRecipeId = movementsInfo.some((col: any) => col.name === 'recipe_id');
+    if (!hasRecipeId) {
+      console.log('Migración: agregando columna recipe_id a movements...');
+      await db.run(`ALTER TABLE movements ADD COLUMN recipe_id TEXT`);
+      console.log('Migración recipe_id completada');
+    }
+
+    // Migración: agregar columna recipe_name a movements (para evitar JOINs costosos)
+    const hasRecipeName = movementsInfo.some((col: any) => col.name === 'recipe_name');
+    if (!hasRecipeName) {
+      await db.run(`ALTER TABLE movements ADD COLUMN recipe_name TEXT`);
     }
   } catch (error) {
     console.error('Error al ejecutar migraciones:', error);
-    // No lanzar error para no interrumpir el inicio del servidor
   }
 }
 

@@ -204,7 +204,7 @@ export default function Components() {
       renderCell: (params) => {
         const stock = params.row.current_stock;
         const minStock = params.row.min_stock;
-        const color = stock <= minStock ? 'error' : 'success';
+        const color = minStock > 0 && stock < minStock ? 'error' : 'success';
         return <Chip label={stock} color={color} size="small" />;
       },
     },
@@ -545,7 +545,7 @@ export default function Components() {
                 </Typography>
                 <Chip 
                   label={viewingComponent.current_stock}
-                  color={viewingComponent.current_stock <= viewingComponent.min_stock ? 'error' : 'success'}
+                  color={viewingComponent.min_stock > 0 && viewingComponent.current_stock < viewingComponent.min_stock ? 'error' : 'success'}
                   sx={{ mb: 2 }}
                 />
               </Grid>

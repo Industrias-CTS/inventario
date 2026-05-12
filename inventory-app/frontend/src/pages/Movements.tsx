@@ -16,6 +16,7 @@ import {
   Chip,
   Alert,
   IconButton,
+  Collapse,
   Table,
   TableBody,
   TableCell,
@@ -27,7 +28,6 @@ import {
   Switch,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import {
   Add,
   ArrowUpward,
@@ -38,15 +38,23 @@ import {
   AddCircle,
   DeleteSweep,
   Visibility,
+  ExpandMore,
+  ExpandLess,
 } from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { format } from 'date-fns';
 import { movementsService } from '../services/movements.service';
 import { componentsService } from '../services/components.service';
-import { movementTypesService } from '../services/movement-types.service';
 import { recipesService } from '../services/recipes.service';
 import { authService } from '../services/auth.service';
+
+const MOVEMENT_TYPES = [
+  { value: 'entrada', label: 'Entrada', operation: 'IN' },
+  { value: 'salida', label: 'Salida', operation: 'OUT' },
+  { value: 'reserva', label: 'Reserva', operation: 'RESERVE' },
+];
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -102,6 +110,7 @@ export default function Movements() {
   const [openClearDialog, setOpenClearDialog] = useState(false);
   const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
+  const [expandedRecipes, setExpandedRecipes] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   const { data: movementsData, isLoading: movementsLoading } = useQuery({
@@ -119,11 +128,6 @@ export default function Movements() {
     queryFn: () => componentsService.getComponents(),
   });
 
-  const { data: movementTypesData } = useQuery({
-    queryKey: ['movement-types'],
-    queryFn: () => movementTypesService.getMovementTypes(),
-  });
-
   const { data: recipesData } = useQuery({
     queryKey: ['recipes-list'],
     queryFn: () => recipesService.getRecipes({ is_active: true }),
@@ -134,6 +138,7 @@ export default function Movements() {
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['movements'] });
       queryClient.invalidateQueries({ queryKey: ['components'] });
+      queryClient.invalidateQueries({ queryKey: ['components-list'] });
       setOpenMovementDialog(false);
       resetMovement();
       
@@ -151,6 +156,7 @@ export default function Movements() {
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
       queryClient.invalidateQueries({ queryKey: ['components'] });
+      queryClient.invalidateQueries({ queryKey: ['components-list'] });
       setOpenReservationDialog(false);
       resetReservation();
       
@@ -168,6 +174,7 @@ export default function Movements() {
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['movements'] });
       queryClient.invalidateQueries({ queryKey: ['components'] });
+      queryClient.invalidateQueries({ queryKey: ['components-list'] });
       setOpenInvoiceDialog(false);
       resetInvoice();
       setInvoiceItems([]);
@@ -241,14 +248,13 @@ export default function Movements() {
 
   // Watch form values para validación en tiempo real
   const selectedComponentId = watchMovement('component_id');
-  const selectedMovementTypeId = watchMovement('movement_type_id');
-  // const enteredQuantity = watchMovement('quantity');
+  const selectedMovementTypeValue = watchMovement('type');
 
   // Obtener componente seleccionado
-  const selectedComponentData = componentsData?.components.find(c => c.id === selectedComponentId);
-  
+  const selectedComponentData = componentsData?.components.find((c: any) => c.id === selectedComponentId);
+
   // Obtener tipo de movimiento seleccionado
-  const selectedMovementType = movementTypesData?.movementTypes.find(mt => mt.id === selectedMovementTypeId);
+  const selectedMovementType = MOVEMENT_TYPES.find(mt => mt.value === selectedMovementTypeValue);
 
   const movementColumns: GridColDef[] = [
     {
@@ -358,37 +364,33 @@ export default function Movements() {
   ];
 
   const onSubmitMovement = (data: any) => {
-    // Si estamos usando una receta, procesar múltiples movimientos
     if (useRecipe && movementItems.length > 0) {
-      // Validar que todos los items tengan datos válidos
-      const validItems = movementItems.filter(item => 
-        item.component_id && 
-        item.quantity && 
-        item.quantity > 0
-      );
-      
+      const validItems = movementItems.filter(item => item.component_id && item.quantity > 0);
       if (validItems.length === 0) {
         alert('No hay componentes válidos en la receta seleccionada');
         return;
       }
-      
-      console.log('Creando movimientos para:', validItems);
-      
-      // Crear movimientos para cada componente de la receta
+
+      const batchRecipeId = selectedRecipe?.id || null;
+      const batchRecipeName = selectedRecipe?.name || null;
+
       Promise.all(
-        validItems.map(item => 
+        validItems.map(item =>
           movementsService.createMovement({
-            movement_type_id: data.movement_type_id,
+            type: data.type,
             component_id: item.component_id,
             quantity: parseFloat(item.quantity.toString()),
             unit_cost: item.cost_price ? parseFloat(item.cost_price.toString()) : 0,
             reference_number: data.reference_number,
-            notes: `${data.notes || ''} - Receta: ${selectedRecipe?.name || ''} (x${recipeMultiplier})`.trim()
+            notes: `${data.notes || ''} - Receta: ${batchRecipeName} (x${recipeMultiplier})`.trim(),
+            recipe_id: batchRecipeId,
+            recipe_name: batchRecipeName,
           })
         )
       ).then(() => {
         queryClient.invalidateQueries({ queryKey: ['movements'] });
         queryClient.invalidateQueries({ queryKey: ['components'] });
+        queryClient.invalidateQueries({ queryKey: ['components-list'] });
         setOpenMovementDialog(false);
         resetMovement();
         setMovementItems([]);
@@ -401,8 +403,14 @@ export default function Movements() {
         alert(`Error al crear movimientos: ${error.response?.data?.error || error.message}`);
       });
     } else {
-      // Movimiento individual normal
-      createMovementMutation.mutate(data);
+      createMovementMutation.mutate({
+        type: data.type,
+        component_id: data.component_id,
+        quantity: parseFloat(data.quantity),
+        unit_cost: data.unit_cost ? parseFloat(data.unit_cost) : 0,
+        reference_number: data.reference_number,
+        notes: data.notes,
+      });
     }
   };
 
@@ -416,7 +424,9 @@ export default function Movements() {
       return;
     }
     createInvoiceMutation.mutate({
-      ...data,
+      type: data.type,
+      reference_number: data.reference_number,
+      notes: data.notes,
       shipping_cost: parseFloat(data.shipping_cost || 0),
       shipping_tax: parseFloat(data.shipping_tax || 0),
       items: invoiceItems,
@@ -489,91 +499,159 @@ export default function Movements() {
       </Box>
 
       <Paper sx={{ width: '100%' }}>
-        {isViewer ? (
-          <Typography variant="h6" sx={{ p: 2 }}>
-            Historial de Movimientos
-          </Typography>
-        ) : (
-          <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
-            <Tab label="Movimientos" />
-            <Tab label="Reservas" />
-          </Tabs>
-        )}
+        <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
+          <Tab label="Movimientos" />
+          {!isViewer && <Tab label="Por Receta" />}
+          <Tab label="Reservas" />
+        </Tabs>
 
-        {!isViewer ? (
-          <TabPanel value={tabValue} index={0}>
+        {/* Tab 0: Historial completo de movimientos */}
+        <TabPanel value={tabValue} index={0}>
           <DataGrid
             rows={movementsData?.movements || []}
             columns={movementColumns}
             loading={movementsLoading}
             autoHeight
-            pageSizeOptions={[10, 25, 50]}
+            pageSizeOptions={[25, 50, 100]}
             initialState={{
-              pagination: {
-                paginationModel: { pageSize: 25 },
-              },
-              sorting: {
-                sortModel: [{ field: 'created_at', sort: 'desc' }],
-              },
+              pagination: { paginationModel: { pageSize: 25 } },
+              sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
             }}
-            sx={{
-              '& .MuiDataGrid-cell:hover': {
-                color: 'primary.main',
-              },
-            }}
+            sx={{ '& .MuiDataGrid-cell:hover': { color: 'primary.main' } }}
           />
+        </TabPanel>
+
+        {/* Tab 1: Movimientos agrupados por receta */}
+        {!isViewer && (
+          <TabPanel value={tabValue} index={1}>
+            {(() => {
+              const recipeMovements = (movementsData?.movements || []).filter((m: any) => m.recipe_id);
+              const groups = recipeMovements.reduce((acc: any, m: any) => {
+                const key = m.recipe_id;
+                if (!acc[key]) {
+                  acc[key] = {
+                    recipe_id: m.recipe_id,
+                    recipe_name: m.recipe_name || 'Receta',
+                    reference: m.reference_number,
+                    date: m.created_at,
+                    movements: [],
+                  };
+                }
+                if (m.created_at < acc[key].date) acc[key].date = m.created_at;
+                acc[key].movements.push(m);
+                return acc;
+              }, {} as Record<string, any>);
+
+              const groupList = Object.values(groups) as any[];
+
+              if (groupList.length === 0) {
+                return (
+                  <Typography color="textSecondary" sx={{ p: 2 }}>
+                    No hay movimientos asociados a recetas
+                  </Typography>
+                );
+              }
+
+              return (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell width={40} />
+                        <TableCell>Receta</TableCell>
+                        <TableCell>Referencia</TableCell>
+                        <TableCell>Fecha</TableCell>
+                        <TableCell align="right">Componentes</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {groupList
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .map((group: any) => (
+                          <React.Fragment key={group.recipe_id}>
+                            <TableRow
+                              hover
+                              sx={{ cursor: 'pointer', backgroundColor: 'action.hover' }}
+                              onClick={() =>
+                                setExpandedRecipes(prev => {
+                                  const next = new Set(prev);
+                                  next.has(group.recipe_id) ? next.delete(group.recipe_id) : next.add(group.recipe_id);
+                                  return next;
+                                })
+                              }
+                            >
+                              <TableCell>
+                                {expandedRecipes.has(group.recipe_id) ? <ExpandLess /> : <ExpandMore />}
+                              </TableCell>
+                              <TableCell><strong>{group.recipe_name}</strong></TableCell>
+                              <TableCell>{group.reference || '-'}</TableCell>
+                              <TableCell>{format(new Date(group.date), 'dd/MM/yyyy HH:mm')}</TableCell>
+                              <TableCell align="right">
+                                <Chip label={group.movements.length} size="small" />
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell colSpan={5} sx={{ p: 0, border: 0 }}>
+                                <Collapse in={expandedRecipes.has(group.recipe_id)} timeout="auto" unmountOnExit>
+                                  <Box sx={{ m: 1, pl: 4 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          <TableCell>Componente</TableCell>
+                                          <TableCell>Tipo</TableCell>
+                                          <TableCell align="right">Cantidad</TableCell>
+                                          <TableCell align="right">Costo Unit.</TableCell>
+                                          <TableCell>Fecha</TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {group.movements.map((m: any) => (
+                                          <TableRow key={m.id}>
+                                            <TableCell>{m.component_name}</TableCell>
+                                            <TableCell>
+                                              <Chip
+                                                label={m.type}
+                                                size="small"
+                                                color={m.type === 'entrada' ? 'success' : m.type === 'salida' ? 'error' : 'warning'}
+                                              />
+                                            </TableCell>
+                                            <TableCell align="right">{m.quantity}</TableCell>
+                                            <TableCell align="right">${m.unit_cost || 0}</TableCell>
+                                            <TableCell>{format(new Date(m.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </Box>
+                                </Collapse>
+                              </TableCell>
+                            </TableRow>
+                          </React.Fragment>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              );
+            })()}
           </TabPanel>
-        ) : (
-          <Box sx={{ py: 3 }}>
+        )}
+
+        {/* Tab Reservas */}
+        <TabPanel value={tabValue} index={isViewer ? 1 : 2}>
           <DataGrid
             rows={reservationsData?.reservations || []}
             columns={reservationColumns}
             getRowId={(row) => row.component_id}
             loading={reservationsLoading}
             autoHeight
-            pageSizeOptions={[10, 25, 50]}
+            pageSizeOptions={[25, 50, 100]}
             initialState={{
-              pagination: {
-                paginationModel: { pageSize: 25 },
-              },
-              sorting: {
-                sortModel: [{ field: 'component_name', sort: 'asc' }],
-              },
+              pagination: { paginationModel: { pageSize: 25 } },
+              sorting: { sortModel: [{ field: 'component_name', sort: 'asc' }] },
             }}
-            sx={{
-              '& .MuiDataGrid-cell:hover': {
-                color: 'primary.main',
-              },
-            }}
+            sx={{ '& .MuiDataGrid-cell:hover': { color: 'primary.main' } }}
           />
-          </Box>
-        )}
-
-        {!isViewer && (
-          <TabPanel value={tabValue} index={1}>
-            <DataGrid
-              rows={reservationsData?.reservations || []}
-              columns={reservationColumns}
-              getRowId={(row) => row.component_id}
-              loading={reservationsLoading}
-              autoHeight
-              pageSizeOptions={[10, 25, 50]}
-              initialState={{
-                pagination: {
-                  paginationModel: { pageSize: 25 },
-                },
-                sorting: {
-                  sortModel: [{ field: 'component_name', sort: 'asc' }],
-                },
-              }}
-              sx={{
-                '& .MuiDataGrid-cell:hover': {
-                  color: 'primary.main',
-                },
-              }}
-            />
-          </TabPanel>
-        )}
+        </TabPanel>
       </Paper>
 
       {/* Dialog para nuevo movimiento */}
@@ -725,16 +803,16 @@ export default function Movements() {
                   fullWidth
                   label="Tipo de Movimiento"
                   select
-                  {...registerMovement('movement_type_id', {
+                  {...registerMovement('type', {
                     required: 'El tipo de movimiento es requerido',
                   })}
-                  error={!!movementErrors.movement_type_id}
-                  helperText={movementErrors.movement_type_id?.message as string}
+                  error={!!movementErrors.type}
+                  helperText={movementErrors.type?.message as string}
                 >
                   <MenuItem value="">Seleccionar...</MenuItem>
-                  {movementTypesData?.movementTypes.map((type) => (
-                    <MenuItem key={type.id} value={type.id}>
-                      {type.name} ({type.operation})
+                  {MOVEMENT_TYPES.map((type) => (
+                    <MenuItem key={type.value} value={type.value}>
+                      {type.label}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -818,7 +896,7 @@ export default function Movements() {
                       min: { value: 0.01, message: 'La cantidad debe ser mayor a 0' },
                       validate: (value) => {
                         if (!useRecipe && selectedMovementType?.operation === 'OUT' && selectedComponentData) {
-                          const availableStock = selectedComponentData.current_stock - selectedComponentData.reserved_stock;
+                          const availableStock = (selectedComponentData as any).current_stock - (selectedComponentData as any).reserved_stock;
                           if (parseFloat(value) > availableStock) {
                             return `Stock insuficiente. Disponible: ${availableStock} unidades`;
                           }
@@ -1070,20 +1148,18 @@ export default function Movements() {
                   fullWidth
                   label="Tipo de Movimiento"
                   select
-                  {...registerInvoice('movement_type_id', {
+                  {...registerInvoice('type', {
                     required: 'El tipo de movimiento es requerido',
                   })}
-                  error={!!invoiceErrors.movement_type_id}
-                  helperText={invoiceErrors.movement_type_id?.message as string}
+                  error={!!invoiceErrors.type}
+                  helperText={invoiceErrors.type?.message as string}
                 >
                   <MenuItem value="">Seleccionar...</MenuItem>
-                  {movementTypesData?.movementTypes
-                    .filter(type => type.operation === 'IN')
-                    .map((type) => (
-                      <MenuItem key={type.id} value={type.id}>
-                        {type.name}
-                      </MenuItem>
-                    ))}
+                  {MOVEMENT_TYPES.map((type) => (
+                    <MenuItem key={type.value} value={type.value}>
+                      {type.label}
+                    </MenuItem>
+                  ))}
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={6}>

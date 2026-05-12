@@ -1,33 +1,33 @@
 import { Request, Response } from 'express';
 import { db } from '../config/database.config';
+import { randomUUID } from 'crypto';
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const generateId = () => randomUUID();
 
-// Mapeo de tipos a operaciones para compatibilidad
 const TYPE_TO_OPERATION: { [key: string]: string } = {
   'entrada': 'IN',
-  'salida': 'OUT', 
+  'salida': 'OUT',
   'reserva': 'RESERVE',
   'liberacion': 'RELEASE',
-  'ajuste': 'IN', // Por defecto ajuste como entrada
-  'transferencia': 'IN' // Por defecto transferencia como entrada
 };
+
+const VALID_TYPES = ['entrada', 'salida', 'reserva'];
 
 export const getMovements = async (req: Request, res: Response) => {
   try {
-    const { component_id, movement_type_id, start_date, end_date, limit = 100 } = req.query;
-    
+    const { component_id, type: typeFilter, start_date, end_date, limit, offset = 0, recipe_id } = req.query;
+
     let query = `
-      SELECT 
+      SELECT
         m.*,
         m.type as movement_type_code,
         m.type as movement_type_name,
         m.reference as reference_number,
-        CASE 
-          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-          WHEN m.type IN ('salida') THEN 'OUT'
-          WHEN m.type IN ('reserva') THEN 'RESERVE'
-          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+        CASE
+          WHEN m.type = 'entrada' THEN 'IN'
+          WHEN m.type = 'salida' THEN 'OUT'
+          WHEN m.type = 'reserva' THEN 'RESERVE'
+          WHEN m.type = 'liberacion' THEN 'RELEASE'
           ELSE 'IN'
         END as operation,
         c.code as component_code,
@@ -40,7 +40,7 @@ export const getMovements = async (req: Request, res: Response) => {
       LEFT JOIN users u ON m.user_id = u.id
       WHERE 1=1
     `;
-    
+
     const values: any[] = [];
 
     if (component_id) {
@@ -48,17 +48,14 @@ export const getMovements = async (req: Request, res: Response) => {
       values.push(component_id);
     }
 
-    if (movement_type_id) {
-      // Convertir movement_type_id a type para compatibilidad con frontend
-      let typeValue = movement_type_id;
-      if (typeof movement_type_id === 'string') {
-        if (movement_type_id.includes('entrada') || movement_type_id === 'entrada001') typeValue = 'entrada';
-        else if (movement_type_id.includes('salida') || movement_type_id === 'salida001') typeValue = 'salida';
-        else if (movement_type_id.includes('reserva') || movement_type_id === 'reserva001') typeValue = 'reserva';
-        else if (movement_type_id.includes('liberacion') || movement_type_id === 'libera001') typeValue = 'liberacion';
-      }
+    if (typeFilter) {
       query += ` AND m.type = ?`;
-      values.push(typeValue);
+      values.push(typeFilter);
+    }
+
+    if (recipe_id) {
+      query += ` AND m.recipe_id = ?`;
+      values.push(recipe_id);
     }
 
     if (start_date) {
@@ -71,8 +68,12 @@ export const getMovements = async (req: Request, res: Response) => {
       values.push(end_date);
     }
 
-    query += ` ORDER BY m.created_at DESC LIMIT ?`;
-    values.push(Number(limit));
+    query += ` ORDER BY m.created_at DESC`;
+
+    if (limit) {
+      query += ` LIMIT ? OFFSET ?`;
+      values.push(Number(limit), Number(offset));
+    }
 
     const movements = await db.query(query, values);
     res.json({ movements });
@@ -83,51 +84,29 @@ export const getMovements = async (req: Request, res: Response) => {
 };
 
 export const createMovement = async (req: Request, res: Response) => {
-  // Verificar si ya se envió una respuesta
-  if (res.headersSent) {
-    console.error('Headers ya enviados, abortando creación de movimiento');
-    return;
-  }
-
   try {
     const {
-      movement_type_id,
       type: requestType,
       component_id,
       quantity,
       unit_cost = 0,
       reference_number,
-      notes
+      notes,
+      recipe_id,
+      recipe_name,
     } = req.body;
 
     const userId = req.user?.userId;
+    const movementType = requestType;
 
-    // Determinar el tipo basado en movement_type_id o type
-    let movementType = requestType;
-    if (movement_type_id && !requestType) {
-      if (movement_type_id.includes('entrada') || movement_type_id === 'entrada001') movementType = 'entrada';
-      else if (movement_type_id.includes('salida') || movement_type_id === 'salida001') movementType = 'salida';
-      else if (movement_type_id.includes('reserva') || movement_type_id === 'reserva001') movementType = 'reserva';
-      else if (movement_type_id.includes('liberacion') || movement_type_id === 'libera001') movementType = 'liberacion';
-      else movementType = 'entrada'; // Default
+    if (!movementType || !VALID_TYPES.includes(movementType)) {
+      return res.status(400).json({ error: `Tipo de movimiento no válido. Valores permitidos: ${VALID_TYPES.join(', ')}` });
     }
 
-    if (!movementType || !['entrada', 'salida', 'reserva', 'liberacion', 'ajuste', 'transferencia'].includes(movementType)) {
-      if (!res.headersSent) {
-        return res.status(400).json({ error: 'Tipo de movimiento no válido' });
-      }
-      return;
-    }
+    const operation = TYPE_TO_OPERATION[movementType];
 
-    const operation = TYPE_TO_OPERATION[movementType] || 'IN';
-
-    // Toda la operación dentro de una transacción para evitar condiciones de carrera
     await db.transaction(async () => {
-      // Leer componente DENTRO de la transacción
-      const component = await db.get(
-        'SELECT * FROM components WHERE id = ?',
-        [component_id]
-      );
+      const component = await db.get('SELECT * FROM components WHERE id = ?', [component_id]);
 
       if (!component) {
         throw new Error('Componente no encontrado');
@@ -137,38 +116,32 @@ export const createMovement = async (req: Request, res: Response) => {
       let newReservedStock = component.reserved_stock || 0;
       let newCostPrice = component.cost_price || 0;
 
-      // Para salidas, usar el cost_price del componente si no se especifica unit_cost
-      let finalUnitCost = unit_cost;
-      if (operation === 'OUT' && (!unit_cost || unit_cost === 0)) {
+      let finalUnitCost = Number(unit_cost) || 0;
+      if (operation === 'OUT' && finalUnitCost === 0) {
         finalUnitCost = component.cost_price || 0;
       }
 
       switch (operation) {
         case 'IN':
           newStock += Number(quantity);
-          if (unit_cost > newCostPrice) {
-            newCostPrice = unit_cost;
+          if (finalUnitCost > newCostPrice) {
+            newCostPrice = finalUnitCost;
           }
           break;
         case 'OUT':
-          if (component.current_stock < quantity) {
-            throw new Error('Stock insuficiente');
+          if (component.current_stock < Number(quantity)) {
+            throw new Error(`Stock insuficiente. Disponible: ${component.current_stock}, solicitado: ${quantity}`);
           }
           newStock -= Number(quantity);
           break;
-        case 'RESERVE':
+        case 'RESERVE': {
           const availableForReserve = component.current_stock - (component.reserved_stock || 0);
-          if (availableForReserve < quantity) {
+          if (availableForReserve < Number(quantity)) {
             throw new Error(`Stock disponible insuficiente para reservar. Disponible: ${availableForReserve}, solicitado: ${quantity}`);
           }
           newReservedStock += Number(quantity);
           break;
-        case 'RELEASE':
-          if ((component.reserved_stock || 0) < quantity) {
-            throw new Error('No hay suficiente stock reservado para liberar');
-          }
-          newReservedStock -= Number(quantity);
-          break;
+        }
       }
 
       await db.run(
@@ -180,45 +153,20 @@ export const createMovement = async (req: Request, res: Response) => {
       const now = new Date().toISOString();
 
       await db.run(
-        `INSERT INTO movements (
-          id, type, component_id, quantity,
-          unit_cost, total_cost, reference, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          movementId, movementType, component_id, quantity,
-          finalUnitCost, quantity * finalUnitCost, reference_number, notes, userId, now
-        ]
+        `INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, recipe_id, recipe_name, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [movementId, movementType, component_id, Number(quantity), finalUnitCost, Number(quantity) * finalUnitCost, reference_number || null, notes || null, userId, recipe_id || null, recipe_name || null, now]
       );
 
       const newMovement = await db.get(
-        `SELECT
-          m.*,
-          m.type as movement_type_name,
-          m.reference as reference_number,
-          CASE
-            WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-            WHEN m.type IN ('salida') THEN 'OUT'
-            WHEN m.type IN ('reserva') THEN 'RESERVE'
-            WHEN m.type IN ('liberacion') THEN 'RELEASE'
-            ELSE 'IN'
-          END as operation,
+        `SELECT m.*, m.type as movement_type_name, m.reference as reference_number,
+          CASE WHEN m.type = 'entrada' THEN 'IN' WHEN m.type = 'salida' THEN 'OUT' WHEN m.type = 'reserva' THEN 'RESERVE' ELSE 'IN' END as operation,
           c.name as component_name
-        FROM movements m
-        JOIN components c ON m.component_id = c.id
-        WHERE m.id = ?`,
+         FROM movements m JOIN components c ON m.component_id = c.id WHERE m.id = ?`,
         [movementId]
       );
 
-      if (!res.headersSent) {
-        res.status(201).json({
-          message: 'Movimiento registrado exitosamente',
-          movement: {
-            ...newMovement
-          },
-          newStock,
-          newReservedStock
-        });
-      }
+      res.status(201).json({ message: 'Movimiento registrado exitosamente', movement: newMovement, newStock, newReservedStock });
     });
   } catch (error: any) {
     console.error('Error al crear movimiento:', error);
@@ -485,25 +433,14 @@ export const getReservations = async (req: Request, res: Response) => {
 
 export const createInvoice = async (req: Request, res: Response) => {
   try {
-    const { movement_type_id, type: requestType, reference_number, items, shipping_cost = 0, shipping_tax = 0, notes } = req.body;
+    const { type: requestType, reference_number, items, shipping_cost = 0, shipping_tax = 0, notes } = req.body;
     const userId = req.user?.userId;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'La factura debe tener al menos un item' });
     }
 
-    // Determinar el tipo basado en movement_type_id o type
-    let movementType = requestType;
-    if (movement_type_id && !requestType) {
-      if (movement_type_id.includes('entrada') || movement_type_id === 'entrada001') movementType = 'entrada';
-      else if (movement_type_id.includes('salida') || movement_type_id === 'salida001') movementType = 'salida';
-      else movementType = 'entrada'; // Default
-    }
-
-    if (!movementType) {
-      movementType = 'entrada'; // Default
-    }
-
+    const movementType = requestType || 'entrada';
     const operation = TYPE_TO_OPERATION[movementType] || 'IN';
 
     await db.transaction(async () => {

@@ -49,7 +49,7 @@ export default function Dashboard() {
     const components = componentsData.components;
     const totalComponents = components.length;
     const lowStockCount = components.filter(
-      (c) => c.current_stock <= c.min_stock
+      (c) => c.min_stock > 0 && c.current_stock < c.min_stock
     ).length;
     const totalValue = components.reduce(
       (sum, c) => sum + c.current_stock * c.cost_price,
@@ -204,11 +204,11 @@ export default function Dashboard() {
               Componentes con Stock Bajo
             </Typography>
             {componentsData?.components &&
-            componentsData.components.filter((c) => c.current_stock <= c.min_stock)
+            componentsData.components.filter((c) => c.min_stock > 0 && c.current_stock < c.min_stock)
               .length > 0 ? (
               <Box>
                 {componentsData.components
-                  .filter((c) => c.current_stock <= c.min_stock)
+                  .filter((c) => c.min_stock > 0 && c.current_stock < c.min_stock)
                   .slice(0, 5)
                   .map((component) => (
                     <Box
