@@ -75,44 +75,25 @@ async function createTables() {
       cost_price REAL DEFAULT 0,
       sale_price REAL DEFAULT 0,
       is_active BOOLEAN DEFAULT 1,
+      created_by TEXT REFERENCES users(id),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Tabla de tipos de movimiento
-    CREATE TABLE IF NOT EXISTS movement_types (
-      id TEXT PRIMARY KEY,
-      code TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      operation TEXT CHECK (operation IN ('IN', 'OUT', 'RESERVE', 'RELEASE')) NOT NULL
     );
 
     -- Tabla de movimientos
     CREATE TABLE IF NOT EXISTS movements (
       id TEXT PRIMARY KEY,
-      movement_type_id TEXT REFERENCES movement_types(id),
+      type TEXT NOT NULL,
       component_id TEXT REFERENCES components(id),
       quantity REAL NOT NULL,
       unit_cost REAL DEFAULT 0,
-      reference_number TEXT,
+      total_cost REAL DEFAULT 0,
+      reference TEXT,
       notes TEXT,
       user_id TEXT REFERENCES users(id),
       recipe_id TEXT,
+      recipe_name TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Tabla de reservas
-    CREATE TABLE IF NOT EXISTS reservations (
-      id TEXT PRIMARY KEY,
-      component_id TEXT REFERENCES components(id),
-      quantity REAL NOT NULL,
-      reference TEXT,
-      notes TEXT,
-      status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
-      reserved_by TEXT REFERENCES users(id),
-      reserved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      expires_at DATETIME,
-      completed_at DATETIME
     );
 
     -- Tabla de recetas
@@ -213,37 +194,24 @@ async function seedInitialData() {
   const unitId = generateId();
   const categoryId = generateId();
   const componentId = generateId();
-  const movementTypeIds = {
-    purchase: generateId(),
-    sale: generateId(),
-    adjustment: generateId(),
-    reservation: generateId()
-  };
 
   await db.exec(`
     -- Usuarios por defecto
-    INSERT INTO users (id, username, email, password, first_name, last_name, role) VALUES 
+    INSERT INTO users (id, username, email, password, first_name, last_name, role) VALUES
     ('${generateId()}', 'admin', 'admin@inventory.com', '${adminPassword}', 'Administrador', 'Sistema', 'admin'),
     ('${generateId()}', 'user', 'user@inventory.com', '${userPassword}', 'Usuario', 'Estándar', 'user');
 
     -- Unidades
-    INSERT INTO units (id, name, symbol) VALUES 
+    INSERT INTO units (id, name, symbol) VALUES
     ('${unitId}', 'Unidades', 'pcs'),
     ('${generateId()}', 'Kilogramos', 'kg'),
     ('${generateId()}', 'Metros', 'm');
 
     -- Categorías
-    INSERT INTO categories (id, name, description) VALUES 
+    INSERT INTO categories (id, name, description) VALUES
     ('${categoryId}', 'Componentes Electrónicos', 'Resistencias, capacitores, etc.'),
     ('${generateId()}', 'Herramientas', 'Herramientas de trabajo'),
     ('${generateId()}', 'Materiales', 'Materiales diversos');
-
-    -- Tipos de movimiento
-    INSERT INTO movement_types (id, code, name, operation) VALUES
-    ('${movementTypeIds.purchase}', 'PURCHASE', 'Compra', 'IN'),
-    ('${movementTypeIds.sale}', 'SALE', 'Venta', 'OUT'),
-    ('${movementTypeIds.adjustment}', 'ADJUSTMENT_IN', 'Ajuste de entrada', 'IN'),
-    ('${movementTypeIds.reservation}', 'RESERVATION', 'Apartado', 'RESERVE');
 
     -- Componentes de ejemplo
     INSERT INTO components (id, code, name, description, category_id, unit_id, min_stock, current_stock, cost_price, sale_price) VALUES
@@ -252,9 +220,9 @@ async function seedInitialData() {
     ('${generateId()}', 'LED001', 'LED Rojo 5mm', 'LED de alta luminosidad', '${categoryId}', '${unitId}', 20, 100, 0.25, 0.75);
 
     -- Movimientos de ejemplo
-    INSERT INTO movements (id, movement_type_id, component_id, quantity, unit_cost, notes, created_at) VALUES
-    ('${generateId()}', '${movementTypeIds.purchase}', '${componentId}', 50, 0.50, 'Compra inicial', datetime('now', '-5 days')),
-    ('${generateId()}', '${movementTypeIds.sale}', '${componentId}', 10, 1.00, 'Venta al cliente A', datetime('now', '-2 days'));
+    INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, notes, created_at) VALUES
+    ('${generateId()}', 'entrada', '${componentId}', 50, 0.50, 25.00, 'Compra inicial', datetime('now', '-5 days')),
+    ('${generateId()}', 'salida', '${componentId}', 10, 1.00, 10.00, 'Venta al cliente A', datetime('now', '-2 days'));
   `);
 }
 
