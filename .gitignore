@@ -7,3 +7,6 @@
 # Excluir DBs sueltas pero mantener la de datos del backend
 **/inventory.db
 !inventory-app/backend/data/inventory.db
+
+# Backups de base de datos
+inventory-app/backend/data/inventory_backup_*.db
