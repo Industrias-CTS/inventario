@@ -17,7 +17,6 @@ import {
   Inventory,
   SwapHoriz,
   Warning,
-  BookmarkBorder,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format } from 'date-fns';
@@ -40,7 +39,7 @@ interface ReportCard {
   title: string;
   description: string;
   icon: React.ReactNode;
-  type: 'inventory' | 'movements' | 'low-stock' | 'reservations';
+  type: 'inventory' | 'movements' | 'low-stock';
   hasDateRange?: boolean;
 }
 
@@ -70,12 +69,6 @@ export default function Reports() {
       description: 'Componentes que están por debajo del stock mínimo establecido',
       icon: <Warning color="warning" />,
       type: 'low-stock',
-    },
-    {
-      title: 'Reporte de Reservas',
-      description: 'Lista de todas las reservas activas del sistema',
-      icon: <BookmarkBorder color="info" />,
-      type: 'reservations',
     },
   ];
 
@@ -212,19 +205,18 @@ export default function Reports() {
             item.category_name || '-',
             (item.current_stock || 0).toString(),
             (item.min_stock || 0).toString(),
-            (item.reserved_stock || 0).toString(),
             item.unit_symbol || 'unit',
             `$${(item.cost_price || 0).toFixed(2)}`,
             stockStatus
           ];
         });
-        
+
         autoTable(doc, {
-          head: [['Código', 'Nombre', 'Categoría', 'Stock', 'Mín.', 'Reserv.', 'Unidad', 'Costo', 'Estado']],
+          head: [['Código', 'Nombre', 'Categoría', 'Stock', 'Mín.', 'Unidad', 'Costo', 'Estado']],
           body: tableData,
           startY: 60,
-          styles: { 
-            fontSize: 7, 
+          styles: {
+            fontSize: 7,
             cellPadding: 1.5,
             overflow: 'linebreak',
             cellWidth: 'wrap'
@@ -233,14 +225,13 @@ export default function Reports() {
           alternateRowStyles: { fillColor: [245, 245, 245] },
           columnStyles: {
             0: { cellWidth: 18 },
-            1: { cellWidth: 45, overflow: 'linebreak' },
-            2: { cellWidth: 25, overflow: 'linebreak' },
-            3: { cellWidth: 13, halign: 'right' },
-            4: { cellWidth: 13, halign: 'right' },
-            5: { cellWidth: 13, halign: 'right' },
-            6: { cellWidth: 13 },
-            7: { cellWidth: 20, halign: 'right' },
-            8: { cellWidth: 20, halign: 'center' },
+            1: { cellWidth: 50, overflow: 'linebreak' },
+            2: { cellWidth: 30, overflow: 'linebreak' },
+            3: { cellWidth: 15, halign: 'right' },
+            4: { cellWidth: 15, halign: 'right' },
+            5: { cellWidth: 15 },
+            6: { cellWidth: 22, halign: 'right' },
+            7: { cellWidth: 22, halign: 'center' },
           },
         });
         
@@ -393,125 +384,6 @@ export default function Reports() {
     }
   };
 
-  const generateReservationsPDF = async () => {
-    try {
-      // Obtener datos de reservas desde el inventario (componentes con reserved_stock > 0)
-      const response = await api.get('/reports/inventory');
-      const inventoryData = response.data;
-      
-      if (!inventoryData || !inventoryData.data || !inventoryData.data.inventory) {
-        throw new Error('No se pudieron obtener los datos de inventario');
-      }
-      
-      // Filtrar solo componentes con stock reservado
-      const reservations = inventoryData.data.inventory.filter((item: any) => 
-        (item.reserved_stock || 0) > 0
-      );
-      
-      const doc = new jsPDF();
-      
-      // Header principal
-      doc.setFontSize(20);
-      doc.setTextColor(79, 70, 229);
-      doc.text('Reporte de Reservas', 14, 25);
-      
-      // Información del reporte
-      doc.setFontSize(10);
-      doc.setTextColor(100, 100, 100);
-      const today = format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es });
-      doc.text(`Generado: ${today}`, 14, 35);
-      doc.text(`Componentes con reservas: ${reservations.length}`, 14, 40);
-      
-      // Calcular estadísticas
-      const totalReserved = reservations.reduce((sum: number, item: any) => 
-        sum + (item.reserved_stock || 0), 0);
-      const totalValueReserved = reservations.reduce((sum: number, item: any) => 
-        sum + ((item.reserved_stock || 0) * (item.cost_price || 0)), 0);
-      
-      doc.text(`Total de unidades reservadas: ${totalReserved}`, 14, 45);
-      doc.text(`Valor total reservado: $${totalValueReserved.toFixed(2)}`, 14, 50);
-      
-      if (reservations.length === 0) {
-        doc.setFontSize(16);
-        doc.setTextColor(34, 139, 34);
-        doc.text('No hay componentes con stock reservado actualmente.', 14, 70);
-        doc.setFontSize(12);
-        doc.setTextColor(0, 0, 0);
-        doc.text('Todas las unidades del inventario están disponibles para uso.', 14, 85);
-      } else {
-        // Tabla
-        const tableData = reservations.map((item: any) => {
-          const availableStock = (item.current_stock || 0) - (item.reserved_stock || 0);
-          const reservationPercent = ((item.reserved_stock || 0) / (item.current_stock || 1) * 100).toFixed(1);
-          return [
-            item.code || '-',
-            item.name || '-',
-            item.category_name || '-',
-            (item.current_stock || 0).toString(),
-            (item.reserved_stock || 0).toString(),
-            availableStock.toString(),
-            `${reservationPercent}%`,
-            item.unit_symbol || 'unit',
-            `$${(item.cost_price || 0).toFixed(2)}`
-          ];
-        });
-        
-        autoTable(doc, {
-          head: [['Código', 'Componente', 'Categoría', 'Total', 'Reservado', 'Disponible', '% Reserv.', 'Unidad', 'Costo']],
-          body: tableData,
-          startY: 60,
-          styles: { 
-            fontSize: 8, 
-            cellPadding: 2,
-            overflow: 'linebreak',
-            cellWidth: 'wrap'
-          },
-          headStyles: { fillColor: [79, 70, 229], textColor: 255 },
-          alternateRowStyles: { fillColor: [245, 245, 255] },
-          columnStyles: {
-            0: { cellWidth: 18 },
-            1: { cellWidth: 40, overflow: 'linebreak' },
-            2: { cellWidth: 25, overflow: 'linebreak' },
-            3: { cellWidth: 15, halign: 'right' },
-            4: { cellWidth: 15, halign: 'right' },
-            5: { cellWidth: 15, halign: 'right' },
-            6: { cellWidth: 18, halign: 'right' },
-            7: { cellWidth: 12 },
-            8: { cellWidth: 22, halign: 'right' },
-          },
-        });
-        
-        // Resumen
-        const yPos = (doc as any).lastAutoTable?.finalY + 15 || 150;
-        doc.setFontSize(12);
-        doc.setTextColor(0, 0, 0);
-        doc.text('Resumen de Reservas:', 14, yPos);
-        doc.setFontSize(10);
-        doc.text(`• Total de componentes con reservas: ${reservations.length}`, 14, yPos + 10);
-        doc.text(`• Total de unidades reservadas: ${totalReserved}`, 14, yPos + 15);
-        doc.text(`• Valor total reservado: $${totalValueReserved.toFixed(2)}`, 14, yPos + 20);
-        
-        // Recomendaciones
-        doc.setFontSize(10);
-        doc.setTextColor(100, 100, 100);
-        doc.text('Nota: Revisar regularmente las reservas para liberar stock no utilizado', 14, yPos + 30);
-      }
-      
-      // Footer
-      const pageHeight = doc.internal.pageSize.height;
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text('Sistema de Inventario - Industrias CTS', 14, pageHeight - 10);
-      
-      const filename = `reservas_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`;
-      doc.save(filename);
-      
-    } catch (error: any) {
-      throw new Error(`Error generando PDF de reservas: ${error.message || error}`);
-    }
-  };
-
-
   const downloadReport = async (report: ReportCard) => {
     try {
       setLoading(report.title);
@@ -548,11 +420,6 @@ export default function Reports() {
           await generateLowStockPDF(stockResponse.data.data);
           break;
           
-        case 'reservations':
-          // Generar reporte de reservas
-          console.log('Generando reporte de reservas...');
-          await generateReservationsPDF();
-          break;
       }
     } catch (err: any) {
       console.error('Error generando reporte:', err);
@@ -617,8 +484,6 @@ export default function Reports() {
               <MenuItem value="all">Todos</MenuItem>
               <MenuItem value="entrada">Entradas</MenuItem>
               <MenuItem value="salida">Salidas</MenuItem>
-              <MenuItem value="reserva">Reservas</MenuItem>
-              <MenuItem value="liberacion">Liberaciones</MenuItem>
             </TextField>
           </Grid>
           <Grid item xs={12} sm={3}>
@@ -707,11 +572,6 @@ export default function Reports() {
           <Grid item xs={12} sm={6}>
             <Typography variant="body2" color="text.secondary">
               • <strong>Stock Bajo:</strong> Componentes que requieren reposición
-            </Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">
-              • <strong>Reservas:</strong> Estado actual de las reservas
             </Typography>
           </Grid>
         </Grid>

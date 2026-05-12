@@ -209,20 +209,6 @@ export default function Components() {
       },
     },
     {
-      field: 'reserved_stock',
-      headerName: 'Reservado',
-      width: 100,
-      type: 'number',
-    },
-    {
-      field: 'available_stock',
-      headerName: 'Disponible',
-      width: 100,
-      type: 'number',
-      valueGetter: (params) =>
-        params.row.current_stock - params.row.reserved_stock,
-    },
-    {
       field: 'unit_symbol',
       headerName: 'Unidad',
       width: 80,
@@ -548,22 +534,6 @@ export default function Components() {
                   color={viewingComponent.min_stock > 0 && viewingComponent.current_stock < viewingComponent.min_stock ? 'error' : 'success'}
                   sx={{ mb: 2 }}
                 />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Stock Reservado
-                </Typography>
-                <Typography variant="body1" sx={{ mb: 2 }}>
-                  {viewingComponent.reserved_stock}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Stock Disponible
-                </Typography>
-                <Typography variant="body1" sx={{ mb: 2 }}>
-                  {viewingComponent.current_stock - viewingComponent.reserved_stock}
-                </Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Typography variant="subtitle2" color="text.secondary">

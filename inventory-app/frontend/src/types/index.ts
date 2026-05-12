@@ -41,7 +41,6 @@ export interface Component {
   min_stock: number;
   max_stock?: number;
   current_stock: number;
-  reserved_stock: number;
   location?: string;
   cost_price: number;
   is_active: boolean;
@@ -89,7 +88,7 @@ export interface MovementType {
   id: string;
   code: string;
   name: string;
-  operation: 'IN' | 'OUT' | 'RESERVE' | 'RELEASE';
+  operation: 'IN' | 'OUT';
 }
 
 export interface Movement {
@@ -114,31 +113,11 @@ export interface Movement {
   last_name?: string;
 }
 
-export interface Reservation {
-  id: string;
-  component_id: string;
-  quantity: number;
-  reference?: string;
-  notes?: string;
-  status: 'active' | 'completed' | 'cancelled';
-  reserved_by?: string;
-  reserved_at: string;
-  expires_at?: string;
-  completed_at?: string;
-  component_code?: string;
-  component_name?: string;
-  username?: string;
-  first_name?: string;
-  last_name?: string;
-}
-
 export interface StockInfo {
   id: string;
   code: string;
   name: string;
   current_stock: number;
-  reserved_stock: number;
-  available_stock: number;
   min_stock: number;
   max_stock?: number;
   unit_symbol: string;

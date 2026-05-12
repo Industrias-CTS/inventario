@@ -32,7 +32,6 @@ import {
   Add,
   ArrowUpward,
   ArrowDownward,
-  BookmarkAdd,
   Receipt,
   Delete,
   AddCircle,
@@ -41,7 +40,6 @@ import {
   ExpandMore,
   ExpandLess,
 } from '@mui/icons-material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { format } from 'date-fns';
@@ -53,7 +51,6 @@ import { authService } from '../services/auth.service';
 const MOVEMENT_TYPES = [
   { value: 'entrada', label: 'Entrada', operation: 'IN' },
   { value: 'salida', label: 'Salida', operation: 'OUT' },
-  { value: 'reserva', label: 'Reserva', operation: 'RESERVE' },
 ];
 
 interface TabPanelProps {
@@ -79,14 +76,12 @@ function TabPanel(props: TabPanelProps) {
 }
 
 export default function Movements() {
-  // Obtener usuario actual para verificar permisos
   const currentUser = authService.getCurrentUser();
   const isViewer = currentUser?.role === 'viewer';
   const isAdmin = currentUser?.role === 'admin';
-  
+
   const [tabValue, setTabValue] = useState(0);
   const [openMovementDialog, setOpenMovementDialog] = useState(false);
-  const [openReservationDialog, setOpenReservationDialog] = useState(false);
   const [openInvoiceDialog, setOpenInvoiceDialog] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<Array<{
     component_code: string;
@@ -118,11 +113,6 @@ export default function Movements() {
     queryFn: () => movementsService.getMovements(),
   });
 
-  const { data: reservationsData, isLoading: reservationsLoading } = useQuery({
-    queryKey: ['reservations'],
-    queryFn: () => movementsService.getReservations(),
-  });
-
   const { data: componentsData } = useQuery({
     queryKey: ['components-list'],
     queryFn: () => componentsService.getComponents(),
@@ -141,31 +131,11 @@ export default function Movements() {
       queryClient.invalidateQueries({ queryKey: ['components-list'] });
       setOpenMovementDialog(false);
       resetMovement();
-      
-      // Mostrar mensaje de éxito
       alert(`Movimiento creado exitosamente. ${response?.message || ''}`);
     },
     onError: (error: any) => {
       console.error('Error al crear movimiento:', error);
       alert(`Error al crear movimiento: ${error.response?.data?.error || error.message}`);
-    },
-  });
-
-  const createReservationMutation = useMutation({
-    mutationFn: movementsService.createReservation,
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['reservations'] });
-      queryClient.invalidateQueries({ queryKey: ['components'] });
-      queryClient.invalidateQueries({ queryKey: ['components-list'] });
-      setOpenReservationDialog(false);
-      resetReservation();
-      
-      // Mostrar mensaje de éxito
-      alert(`Reserva creada exitosamente. ${response?.message || ''}`);
-    },
-    onError: (error: any) => {
-      console.error('Error al crear reserva:', error);
-      alert(`Error al crear reserva: ${error.response?.data?.error || error.message}`);
     },
   });
 
@@ -180,8 +150,6 @@ export default function Movements() {
       setInvoiceItems([]);
       setSelectedComponent(null);
       setIsNewComponent(false);
-      
-      // Mostrar mensaje de éxito
       alert(`Factura procesada exitosamente. ${response?.message || 'Movimientos de inventario actualizados.'}`);
     },
     onError: (error: any) => {
@@ -214,24 +182,6 @@ export default function Movements() {
   } = useForm();
 
   const {
-    register: registerReservation,
-    handleSubmit: handleSubmitReservation,
-    reset: resetReservation,
-    control: controlReservation,
-    watch: watchReservation,
-    formState: { errors: reservationErrors },
-  } = useForm();
-
-  // Watch para validación en tiempo real de reservas
-  const selectedReservationComponentId = watchReservation('component_id');
-  const selectedReservationComponent = componentsData?.components.find(
-    (c: any) => c.id === selectedReservationComponentId
-  );
-  const reservationAvailableStock = selectedReservationComponent
-    ? selectedReservationComponent.current_stock - (selectedReservationComponent.reserved_stock || 0)
-    : 0;
-
-  const {
     register: registerInvoice,
     handleSubmit: handleSubmitInvoice,
     reset: resetInvoice,
@@ -246,14 +196,9 @@ export default function Movements() {
     formState: { errors: itemErrors },
   } = useForm();
 
-  // Watch form values para validación en tiempo real
   const selectedComponentId = watchMovement('component_id');
   const selectedMovementTypeValue = watchMovement('type');
-
-  // Obtener componente seleccionado
   const selectedComponentData = componentsData?.components.find((c: any) => c.id === selectedComponentId);
-
-  // Obtener tipo de movimiento seleccionado
   const selectedMovementType = MOVEMENT_TYPES.find(mt => mt.value === selectedMovementTypeValue);
 
   const movementColumns: GridColDef[] = [
@@ -301,11 +246,7 @@ export default function Movements() {
             </Typography>
           );
         }
-        return (
-          <Typography variant="body2">
-            {notes || '-'}
-          </Typography>
-        );
+        return <Typography variant="body2">{notes || '-'}</Typography>;
       },
     },
     {
@@ -338,29 +279,6 @@ export default function Movements() {
         </IconButton>
       ),
     },
-  ];
-
-  const reservationColumns: GridColDef[] = [
-    { field: 'component_code', headerName: 'Código', width: 130 },
-    { field: 'component_name', headerName: 'Componente', flex: 1, minWidth: 200 },
-    { field: 'current_stock', headerName: 'Stock Total', width: 120, type: 'number' },
-    { field: 'reserved_stock', headerName: 'Reservado', width: 120, type: 'number',
-      renderCell: (params) => (
-        <Chip label={params.value} color="warning" size="small" variant="outlined" />
-      ),
-    },
-    {
-      field: 'available_stock',
-      headerName: 'Disponible',
-      width: 120,
-      type: 'number',
-      renderCell: (params) => {
-        const available = params.value;
-        const color = available <= 0 ? 'error' : 'success';
-        return <Chip label={available} color={color} size="small" variant="outlined" />;
-      },
-    },
-    { field: 'unit_symbol', headerName: 'Unidad', width: 80 },
   ];
 
   const onSubmitMovement = (data: any) => {
@@ -414,10 +332,6 @@ export default function Movements() {
     }
   };
 
-  const onSubmitReservation = (data: any) => {
-    createReservationMutation.mutate(data);
-  };
-
   const onSubmitInvoice = (data: any) => {
     if (invoiceItems.length === 0) {
       alert('Debe agregar al menos un item a la factura');
@@ -434,12 +348,11 @@ export default function Movements() {
   };
 
   const onAddItem = (data: any) => {
-    // Validar que se haya seleccionado un componente o se esté creando uno nuevo
     if (!isNewComponent && !selectedComponent) {
       alert('Debe seleccionar un componente existente o cambiar a "Crear componente nuevo"');
       return;
     }
-    
+
     const itemData = {
       component_code: isNewComponent ? data.component_code : selectedComponent?.code || data.component_code,
       component_name: isNewComponent ? data.component_name : selectedComponent?.name || data.component_name,
@@ -447,7 +360,7 @@ export default function Movements() {
       total_cost: parseFloat(data.total_cost),
       unit: isNewComponent ? (data.unit || 'unit') : (selectedComponent?.unit_symbol || 'unit'),
     };
-    
+
     setInvoiceItems([...invoiceItems, itemData]);
     resetItem();
     setSelectedComponent(null);
@@ -477,13 +390,6 @@ export default function Movements() {
             >
               Nueva Factura
             </Button>
-            <Button
-              variant="outlined"
-              startIcon={<BookmarkAdd />}
-              onClick={() => setOpenReservationDialog(true)}
-            >
-              Nueva Reserva
-            </Button>
             {isAdmin && (
               <Button
                 variant="outlined"
@@ -502,7 +408,6 @@ export default function Movements() {
         <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
           <Tab label="Movimientos" />
           {!isViewer && <Tab label="Por Receta" />}
-          <Tab label="Reservas" />
         </Tabs>
 
         {/* Tab 0: Historial completo de movimientos */}
@@ -612,7 +517,7 @@ export default function Movements() {
                                               <Chip
                                                 label={m.type}
                                                 size="small"
-                                                color={m.type === 'entrada' ? 'success' : m.type === 'salida' ? 'error' : 'warning'}
+                                                color={m.type === 'entrada' ? 'success' : 'error'}
                                               />
                                             </TableCell>
                                             <TableCell align="right">{m.quantity}</TableCell>
@@ -635,23 +540,6 @@ export default function Movements() {
             })()}
           </TabPanel>
         )}
-
-        {/* Tab Reservas */}
-        <TabPanel value={tabValue} index={isViewer ? 1 : 2}>
-          <DataGrid
-            rows={reservationsData?.reservations || []}
-            columns={reservationColumns}
-            getRowId={(row) => row.component_id}
-            loading={reservationsLoading}
-            autoHeight
-            pageSizeOptions={[25, 50, 100]}
-            initialState={{
-              pagination: { paginationModel: { pageSize: 25 } },
-              sorting: { sortModel: [{ field: 'component_name', sort: 'asc' }] },
-            }}
-            sx={{ '& .MuiDataGrid-cell:hover': { color: 'primary.main' } }}
-          />
-        </TabPanel>
       </Paper>
 
       {/* Dialog para nuevo movimiento */}
@@ -665,7 +553,6 @@ export default function Movements() {
           <DialogTitle>Nuevo Movimiento</DialogTitle>
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 1 }}>
-              {/* Switch para usar receta */}
               <Grid item xs={12}>
                 <FormControlLabel
                   control={
@@ -684,8 +571,7 @@ export default function Movements() {
                   label="Usar receta para múltiples componentes"
                 />
               </Grid>
-              
-              {/* Selector de receta si está activado */}
+
               {useRecipe && (
                 <>
                   <Grid item xs={12} sm={8}>
@@ -696,12 +582,8 @@ export default function Movements() {
                       onChange={async (event, newValue) => {
                         setSelectedRecipe(newValue);
                         if (newValue) {
-                          console.log('Receta seleccionada:', newValue);
                           try {
-                            // Obtener detalles completos de la receta incluyendo ingredientes
                             const recipeDetails = await recipesService.getRecipeById(newValue.id);
-                            console.log('Detalles de receta:', recipeDetails);
-                            
                             if (recipeDetails.recipe.ingredients && recipeDetails.recipe.ingredients.length > 0) {
                               const items = recipeDetails.recipe.ingredients.map((ingredient: any) => ({
                                 component_id: ingredient.component_id,
@@ -710,10 +592,8 @@ export default function Movements() {
                                 unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit',
                                 cost_price: ingredient.cost_price || ingredient.component?.cost_price || 0
                               }));
-                              console.log('Items de movimiento creados:', items);
                               setMovementItems(items);
                             } else {
-                              console.warn('La receta no tiene ingredientes');
                               setMovementItems([]);
                             }
                           } catch (error) {
@@ -725,11 +605,7 @@ export default function Movements() {
                         }
                       }}
                       renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Seleccionar Receta"
-                          required={useRecipe}
-                        />
+                        <TextField {...params} label="Seleccionar Receta" required={useRecipe} />
                       )}
                     />
                   </Grid>
@@ -742,7 +618,6 @@ export default function Movements() {
                       onChange={async (e) => {
                         const value = parseInt(e.target.value) || 1;
                         setRecipeMultiplier(value);
-                        // Actualizar cantidades de los items
                         if (selectedRecipe) {
                           try {
                             const recipeDetails = await recipesService.getRecipeById(selectedRecipe.id);
@@ -765,8 +640,7 @@ export default function Movements() {
                       helperText="Cantidad de veces a aplicar la receta"
                     />
                   </Grid>
-                  
-                  {/* Mostrar componentes de la receta */}
+
                   {movementItems.length > 0 && (
                     <Grid item xs={12}>
                       <Paper sx={{ p: 2, backgroundColor: 'background.default' }}>
@@ -798,6 +672,7 @@ export default function Movements() {
                   )}
                 </>
               )}
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -817,16 +692,13 @@ export default function Movements() {
                   ))}
                 </TextField>
               </Grid>
-              
-              {/* Solo mostrar selector de componente si no estamos usando receta */}
+
               {!useRecipe && (
                 <Grid item xs={12}>
                   <Controller
                     name="component_id"
                     control={controlMovement}
-                    rules={{
-                      required: !useRecipe ? 'El componente es requerido' : false,
-                    }}
+                    rules={{ required: !useRecipe ? 'El componente es requerido' : false }}
                     render={({ field: { onChange, value }, fieldState: { error } }) => (
                       <Autocomplete
                         options={componentsData?.components || []}
@@ -849,31 +721,27 @@ export default function Movements() {
                             placeholder="Buscar por código o nombre..."
                           />
                         )}
-                        renderOption={(props, option) => {
-                          const availableStock = option.current_stock - option.reserved_stock;
-                          return (
-                            <Box component="li" {...props}>
-                              <Box sx={{ width: '100%' }}>
-                                <Typography variant="body2">
-                                  <strong>{option.code}</strong> - {option.name}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  Disponible: {availableStock} {option.unit_symbol} 
-                                  {availableStock <= option.min_stock && (
-                                    <span style={{color: 'orange', marginLeft: '8px'}}>
-                                      ⚠️ Stock bajo
-                                    </span>
-                                  )}
-                                </Typography>
-                              </Box>
+                        renderOption={(props, option) => (
+                          <Box component="li" {...props}>
+                            <Box sx={{ width: '100%' }}>
+                              <Typography variant="body2">
+                                <strong>{option.code}</strong> - {option.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Stock: {option.current_stock} {option.unit_symbol}
+                                {option.min_stock > 0 && option.current_stock < option.min_stock && (
+                                  <span style={{ color: 'orange', marginLeft: '8px' }}>
+                                    ⚠️ Stock bajo
+                                  </span>
+                                )}
+                              </Typography>
                             </Box>
-                          );
-                        }}
+                          </Box>
+                        )}
                         filterOptions={(options, { inputValue }) => {
                           if (!inputValue) return options;
-                          
                           const searchTerm = inputValue.toLowerCase();
-                          return options.filter(option => 
+                          return options.filter(option =>
                             option.code.toLowerCase().includes(searchTerm) ||
                             option.name.toLowerCase().includes(searchTerm)
                           );
@@ -884,7 +752,7 @@ export default function Movements() {
                   />
                 </Grid>
               )}
-              {/* Solo mostrar cantidad si no estamos usando receta */}
+
               {!useRecipe && (
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -896,9 +764,8 @@ export default function Movements() {
                       min: { value: 0.01, message: 'La cantidad debe ser mayor a 0' },
                       validate: (value) => {
                         if (!useRecipe && selectedMovementType?.operation === 'OUT' && selectedComponentData) {
-                          const availableStock = (selectedComponentData as any).current_stock - (selectedComponentData as any).reserved_stock;
-                          if (parseFloat(value) > availableStock) {
-                            return `Stock insuficiente. Disponible: ${availableStock} unidades`;
+                          if (parseFloat(value) > (selectedComponentData as any).current_stock) {
+                            return `Stock insuficiente. Disponible: ${(selectedComponentData as any).current_stock} unidades`;
                           }
                         }
                         return true;
@@ -909,36 +776,32 @@ export default function Movements() {
                   />
                 </Grid>
               )}
-              
-              {/* Mostrar información del componente seleccionado */}
+
               {!useRecipe && selectedComponentData && (
                 <Grid item xs={12}>
                   <Alert
                     severity={
-                      selectedComponentData.current_stock - selectedComponentData.reserved_stock <= 0
+                      (selectedComponentData as any).current_stock <= 0
                         ? 'error'
-                        : selectedComponentData.current_stock - selectedComponentData.reserved_stock <= selectedComponentData.min_stock
+                        : (selectedComponentData as any).min_stock > 0 && (selectedComponentData as any).current_stock < (selectedComponentData as any).min_stock
                         ? 'warning'
                         : 'info'
                     }
                     sx={{ mt: 1 }}
                   >
-                    <strong>{selectedComponentData.name}</strong>
+                    <strong>{(selectedComponentData as any).name}</strong>
                     <br />
-                    Stock actual: {selectedComponentData.current_stock} |
-                    Reservado: {selectedComponentData.reserved_stock} |
-                    <strong> Disponible: {selectedComponentData.current_stock - selectedComponentData.reserved_stock}</strong>
-                    {' | '}Precio: ${selectedComponentData.cost_price || 0}
-                    {selectedComponentData.current_stock - selectedComponentData.reserved_stock <= selectedComponentData.min_stock && (
+                    Stock actual: {(selectedComponentData as any).current_stock} | Precio: ${(selectedComponentData as any).cost_price || 0}
+                    {(selectedComponentData as any).min_stock > 0 && (selectedComponentData as any).current_stock < (selectedComponentData as any).min_stock && (
                       <>
                         <br />
-                        <span style={{color: 'orange'}}>Stock por debajo del minimo ({selectedComponentData.min_stock})</span>
+                        <span style={{ color: 'orange' }}>Stock por debajo del mínimo ({(selectedComponentData as any).min_stock})</span>
                       </>
                     )}
                   </Alert>
                 </Grid>
               )}
-              
+
               {!useRecipe && (
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -948,11 +811,12 @@ export default function Movements() {
                     inputProps={{ step: 'any' }}
                     {...registerMovement('unit_cost', { min: 0 })}
                     helperText={selectedComponentData
-                      ? `Precio registrado: $${selectedComponentData.cost_price || 0}`
+                      ? `Precio registrado: $${(selectedComponentData as any).cost_price || 0}`
                       : ''}
                   />
                 </Grid>
               )}
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -979,150 +843,6 @@ export default function Movements() {
               disabled={createMovementMutation.isPending}
             >
               Crear Movimiento
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-
-      {/* Dialog para nueva reserva */}
-      <Dialog
-        open={openReservationDialog}
-        onClose={() => setOpenReservationDialog(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <form onSubmit={handleSubmitReservation(onSubmitReservation)}>
-          <DialogTitle>Nueva Reserva</DialogTitle>
-          <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              <Grid item xs={12}>
-                <Controller
-                  name="component_id"
-                  control={controlReservation}
-                  rules={{
-                    required: 'El componente es requerido',
-                  }}
-                  render={({ field: { onChange, value }, fieldState: { error } }) => (
-                    <Autocomplete
-                      options={componentsData?.components || []}
-                      getOptionLabel={(option) => `${option.code} - ${option.name}`}
-                      value={componentsData?.components.find(c => c.id === value) || null}
-                      onChange={(event, newValue) => {
-                        onChange(newValue ? newValue.id : '');
-                      }}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Componente"
-                          error={!!error}
-                          helperText={error?.message}
-                          placeholder="Buscar por código o nombre..."
-                        />
-                      )}
-                      renderOption={(props, option) => {
-                        const availableStock = option.current_stock - option.reserved_stock;
-                        return (
-                          <Box component="li" {...props}>
-                            <Box sx={{ width: '100%' }}>
-                              <Typography variant="body2">
-                                <strong>{option.code}</strong> - {option.name}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Stock disponible: {availableStock} {option.unit_symbol}
-                                {availableStock <= 0 && (
-                                  <span style={{color: 'red', marginLeft: '8px'}}>
-                                    ❌ Sin stock
-                                  </span>
-                                )}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        );
-                      }}
-                      filterOptions={(options, { inputValue }) => {
-                        if (!inputValue) return options;
-                        
-                        const searchTerm = inputValue.toLowerCase();
-                        return options.filter(option => 
-                          option.code.toLowerCase().includes(searchTerm) ||
-                          option.name.toLowerCase().includes(searchTerm)
-                        );
-                      }}
-                      noOptionsText="No se encontraron componentes"
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Cantidad"
-                  type="number"
-                  {...registerReservation('quantity', {
-                    required: 'La cantidad es requerida',
-                    min: { value: 0.01, message: 'La cantidad debe ser mayor a 0' },
-                    validate: (value: number) => {
-                      if (selectedReservationComponent && value > reservationAvailableStock) {
-                        return `Stock disponible insuficiente. Disponible: ${reservationAvailableStock}`;
-                      }
-                      return true;
-                    },
-                  })}
-                  error={!!reservationErrors.quantity}
-                  helperText={
-                    (reservationErrors.quantity?.message as string) ||
-                    (selectedReservationComponent
-                      ? `Stock disponible: ${reservationAvailableStock}`
-                      : '')
-                  }
-                  disabled={!selectedReservationComponent || reservationAvailableStock <= 0}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Referencia"
-                  {...registerReservation('reference')}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Controller
-                  name="expires_at"
-                  control={controlReservation}
-                  render={({ field }) => (
-                    <DatePicker
-                      label="Fecha de Expiración"
-                      slotProps={{
-                        textField: {
-                          fullWidth: true,
-                        },
-                      }}
-                      {...field}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Notas"
-                  multiline
-                  rows={2}
-                  {...registerReservation('notes')}
-                />
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setOpenReservationDialog(false)}>
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={createReservationMutation.isPending || !selectedReservationComponent || reservationAvailableStock <= 0}
-            >
-              Crear Reserva
             </Button>
           </DialogActions>
         </form>
@@ -1180,7 +900,7 @@ export default function Movements() {
                   type="number"
                   defaultValue="0"
                   {...registerInvoice('shipping_cost')}
-                  InputProps={{ inputProps: { step: "0.01" } }}
+                  InputProps={{ inputProps: { step: '0.01' } }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -1190,7 +910,7 @@ export default function Movements() {
                   type="number"
                   defaultValue="0"
                   {...registerInvoice('shipping_tax')}
-                  InputProps={{ inputProps: { step: "0.01" } }}
+                  InputProps={{ inputProps: { step: '0.01' } }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -1216,7 +936,6 @@ export default function Movements() {
             </Grid>
           </form>
 
-          {/* Formulario para agregar items */}
           <Box sx={{ mt: 3 }}>
             <Typography variant="h6" gutterBottom>
               Agregar Items
@@ -1233,54 +952,50 @@ export default function Movements() {
                     }}
                   />
                 }
-                label={isNewComponent ? "Crear componente nuevo" : "Seleccionar componente existente"}
+                label={isNewComponent ? 'Crear componente nuevo' : 'Seleccionar componente existente'}
               />
             </Box>
-            
+
             <form onSubmit={handleSubmitItem(onAddItem)}>
               <Grid container spacing={2} alignItems="center">
                 {!isNewComponent ? (
-                  <>
-                    <Grid item xs={12} sm={5}>
-                      <Autocomplete
-                        options={componentsData?.components || []}
-                        getOptionLabel={(option) => `${option.code} - ${option.name}`}
-                        value={selectedComponent}
-                        onChange={(event, newValue) => {
-                          setSelectedComponent(newValue);
-                        }}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Seleccionar Componente"
-                            error={!selectedComponent && !!itemErrors.component_code}
-                            helperText={!selectedComponent && itemErrors.component_code ? 'Debe seleccionar un componente' : ''}
-                          />
-                        )}
-                        renderOption={(props, option) => (
-                          <Box component="li" {...props}>
-                            <Box>
-                              <Typography variant="body2">
-                                <strong>{option.code}</strong> - {option.name}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Stock: {option.current_stock} {option.unit_symbol} | Costo: ${option.cost_price}
-                              </Typography>
-                            </Box>
+                  <Grid item xs={12} sm={5}>
+                    <Autocomplete
+                      options={componentsData?.components || []}
+                      getOptionLabel={(option) => `${option.code} - ${option.name}`}
+                      value={selectedComponent}
+                      onChange={(event, newValue) => {
+                        setSelectedComponent(newValue);
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Seleccionar Componente"
+                          error={!selectedComponent && !!itemErrors.component_code}
+                          helperText={!selectedComponent && itemErrors.component_code ? 'Debe seleccionar un componente' : ''}
+                        />
+                      )}
+                      renderOption={(props, option) => (
+                        <Box component="li" {...props}>
+                          <Box>
+                            <Typography variant="body2">
+                              <strong>{option.code}</strong> - {option.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Stock: {option.current_stock} {option.unit_symbol} | Costo: ${option.cost_price}
+                            </Typography>
                           </Box>
-                        )}
-                      />
-                    </Grid>
-                  </>
+                        </Box>
+                      )}
+                    />
+                  </Grid>
                 ) : (
                   <>
                     <Grid item xs={12} sm={2}>
                       <TextField
                         fullWidth
                         label="Código"
-                        {...registerItem('component_code', {
-                          required: 'Requerido',
-                        })}
+                        {...registerItem('component_code', { required: 'Requerido' })}
                         error={!!itemErrors.component_code}
                       />
                     </Grid>
@@ -1288,9 +1003,7 @@ export default function Movements() {
                       <TextField
                         fullWidth
                         label="Nombre"
-                        {...registerItem('component_name', {
-                          required: 'Requerido',
-                        })}
+                        {...registerItem('component_name', { required: 'Requerido' })}
                         error={!!itemErrors.component_name}
                       />
                     </Grid>
@@ -1306,7 +1019,7 @@ export default function Movements() {
                       min: { value: 0.01, message: 'Mayor a 0' },
                     })}
                     error={!!itemErrors.quantity}
-                    InputProps={{ inputProps: { step: "0.01" } }}
+                    InputProps={{ inputProps: { step: '0.01' } }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={2}>
@@ -1319,7 +1032,7 @@ export default function Movements() {
                       min: { value: 0.01, message: 'Mayor a 0' },
                     })}
                     error={!!itemErrors.total_cost}
-                    InputProps={{ inputProps: { step: "0.01" } }}
+                    InputProps={{ inputProps: { step: '0.01' } }}
                   />
                 </Grid>
                 {isNewComponent && (
@@ -1353,7 +1066,6 @@ export default function Movements() {
             </form>
           </Box>
 
-          {/* Tabla de items */}
           {invoiceItems.length > 0 && (
             <TableContainer component={Paper} sx={{ mt: 3 }}>
               <Table size="small">
@@ -1380,11 +1092,7 @@ export default function Movements() {
                       </TableCell>
                       <TableCell>{item.unit}</TableCell>
                       <TableCell>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => removeItem(index)}
-                        >
+                        <IconButton size="small" color="error" onClick={() => removeItem(index)}>
                           <Delete />
                         </IconButton>
                       </TableCell>
@@ -1446,10 +1154,7 @@ export default function Movements() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button 
-            onClick={() => setOpenClearDialog(false)}
-            color="primary"
-          >
+          <Button onClick={() => setOpenClearDialog(false)} color="primary">
             Cancelar
           </Button>
           <Button
@@ -1470,98 +1175,66 @@ export default function Movements() {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          Detalles del Movimiento
-        </DialogTitle>
+        <DialogTitle>Detalles del Movimiento</DialogTitle>
         <DialogContent>
           {selectedMovement && (
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Fecha
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Fecha</Typography>
                 <Typography variant="body1">
                   {format(new Date(selectedMovement.created_at), 'dd/MM/yyyy HH:mm')}
                 </Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Tipo de Movimiento
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Tipo de Movimiento</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Box sx={{ 
-                    color: selectedMovement.operation === 'IN' ? '#22c55e' : '#ef4444', 
-                    display: 'flex' 
+                  <Box sx={{
+                    color: selectedMovement.operation === 'IN' ? '#22c55e' : '#ef4444',
+                    display: 'flex'
                   }}>
                     {selectedMovement.operation === 'IN' ? <ArrowDownward /> : <ArrowUpward />}
                   </Box>
-                  <Typography sx={{ 
+                  <Typography sx={{
                     color: selectedMovement.operation === 'IN' ? '#22c55e' : '#ef4444',
-                    fontWeight: 500 
+                    fontWeight: 500
                   }}>
                     {selectedMovement.movement_type_name}
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Componente
-                </Typography>
-                <Typography variant="body1">
-                  {selectedMovement.component_name}
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Componente</Typography>
+                <Typography variant="body1">{selectedMovement.component_name}</Typography>
               </Grid>
               <Grid item xs={12} sm={4}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Cantidad
-                </Typography>
-                <Typography variant="body1">
-                  {selectedMovement.quantity}
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Cantidad</Typography>
+                <Typography variant="body1">{selectedMovement.quantity}</Typography>
               </Grid>
               <Grid item xs={12} sm={4}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Costo Unitario
-                </Typography>
-                <Typography variant="body1">
-                  ${selectedMovement.unit_cost || '0.00'}
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Costo Unitario</Typography>
+                <Typography variant="body1">${selectedMovement.unit_cost || '0.00'}</Typography>
               </Grid>
               <Grid item xs={12} sm={4}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Costo Total
-                </Typography>
-                <Typography variant="body1">
-                  ${selectedMovement.total_cost || '0.00'}
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Costo Total</Typography>
+                <Typography variant="body1">${selectedMovement.total_cost || '0.00'}</Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Número de Referencia
-                </Typography>
-                <Typography variant="body1">
-                  {selectedMovement.reference_number || '-'}
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Número de Referencia</Typography>
+                <Typography variant="body1">{selectedMovement.reference_number || '-'}</Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  Usuario
-                </Typography>
+                <Typography variant="subtitle2" color="text.secondary">Usuario</Typography>
                 <Typography variant="body1">
-                  {selectedMovement.username || 
+                  {selectedMovement.username ||
                    `${selectedMovement.first_name || ''} ${selectedMovement.last_name || ''}`.trim() ||
                    'Usuario desconocido'}
                 </Typography>
               </Grid>
               {selectedMovement.notes && (
                 <Grid item xs={12}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Notas
-                  </Typography>
+                  <Typography variant="subtitle2" color="text.secondary">Notas</Typography>
                   <Paper sx={{ p: 2, backgroundColor: 'background.default' }}>
-                    <Typography variant="body1">
-                      {selectedMovement.notes}
-                    </Typography>
+                    <Typography variant="body1">{selectedMovement.notes}</Typography>
                   </Paper>
                 </Grid>
               )}
@@ -1569,9 +1242,7 @@ export default function Movements() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDetailsDialog(false)}>
-            Cerrar
-          </Button>
+          <Button onClick={() => setOpenDetailsDialog(false)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
     </Box>

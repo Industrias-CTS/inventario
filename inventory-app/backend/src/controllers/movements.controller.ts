@@ -7,11 +7,9 @@ const generateId = () => randomUUID();
 const TYPE_TO_OPERATION: { [key: string]: string } = {
   'entrada': 'IN',
   'salida': 'OUT',
-  'reserva': 'RESERVE',
-  'liberacion': 'RELEASE',
 };
 
-const VALID_TYPES = ['entrada', 'salida', 'reserva'];
+const VALID_TYPES = ['entrada', 'salida'];
 
 export const getMovements = async (req: Request, res: Response) => {
   try {
@@ -26,8 +24,6 @@ export const getMovements = async (req: Request, res: Response) => {
         CASE
           WHEN m.type = 'entrada' THEN 'IN'
           WHEN m.type = 'salida' THEN 'OUT'
-          WHEN m.type = 'reserva' THEN 'RESERVE'
-          WHEN m.type = 'liberacion' THEN 'RELEASE'
           ELSE 'IN'
         END as operation,
         c.code as component_code,
@@ -113,7 +109,6 @@ export const createMovement = async (req: Request, res: Response) => {
       }
 
       let newStock = component.current_stock;
-      let newReservedStock = component.reserved_stock || 0;
       let newCostPrice = component.cost_price || 0;
 
       let finalUnitCost = Number(unit_cost) || 0;
@@ -134,19 +129,11 @@ export const createMovement = async (req: Request, res: Response) => {
           }
           newStock -= Number(quantity);
           break;
-        case 'RESERVE': {
-          const availableForReserve = component.current_stock - (component.reserved_stock || 0);
-          if (availableForReserve < Number(quantity)) {
-            throw new Error(`Stock disponible insuficiente para reservar. Disponible: ${availableForReserve}, solicitado: ${quantity}`);
-          }
-          newReservedStock += Number(quantity);
-          break;
-        }
       }
 
       await db.run(
-        'UPDATE components SET current_stock = ?, reserved_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?',
-        [newStock, newReservedStock, newCostPrice, new Date().toISOString(), component_id]
+        'UPDATE components SET current_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?',
+        [newStock, newCostPrice, new Date().toISOString(), component_id]
       );
 
       const movementId = generateId();
@@ -160,13 +147,13 @@ export const createMovement = async (req: Request, res: Response) => {
 
       const newMovement = await db.get(
         `SELECT m.*, m.type as movement_type_name, m.reference as reference_number,
-          CASE WHEN m.type = 'entrada' THEN 'IN' WHEN m.type = 'salida' THEN 'OUT' WHEN m.type = 'reserva' THEN 'RESERVE' ELSE 'IN' END as operation,
+          CASE WHEN m.type = 'entrada' THEN 'IN' WHEN m.type = 'salida' THEN 'OUT' ELSE 'IN' END as operation,
           c.name as component_name
          FROM movements m JOIN components c ON m.component_id = c.id WHERE m.id = ?`,
         [movementId]
       );
 
-      res.status(201).json({ message: 'Movimiento registrado exitosamente', movement: newMovement, newStock, newReservedStock });
+      res.status(201).json({ message: 'Movimiento registrado exitosamente', movement: newMovement, newStock });
     });
   } catch (error: any) {
     console.error('Error al crear movimiento:', error);
@@ -186,11 +173,9 @@ export const getMovementById = async (req: Request, res: Response) => {
         m.type as movement_type_code,
         m.type as movement_type_name,
         m.reference as reference_number,
-        CASE 
-          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-          WHEN m.type IN ('salida') THEN 'OUT'
-          WHEN m.type IN ('reserva') THEN 'RESERVE'
-          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+        CASE
+          WHEN m.type = 'entrada' THEN 'IN'
+          WHEN m.type = 'salida' THEN 'OUT'
           ELSE 'IN'
         END as operation,
         c.code as component_code,
@@ -244,12 +229,10 @@ export const getMovementStats = async (req: Request, res: Response) => {
     }
 
     const stats = await db.get(`
-      SELECT 
+      SELECT
         COUNT(*) as total_movements,
-        SUM(CASE WHEN m.type IN ('entrada', 'ajuste', 'transferencia') THEN m.quantity ELSE 0 END) as total_in,
+        SUM(CASE WHEN m.type = 'entrada' THEN m.quantity ELSE 0 END) as total_in,
         SUM(CASE WHEN m.type = 'salida' THEN m.quantity ELSE 0 END) as total_out,
-        SUM(CASE WHEN m.type = 'reserva' THEN m.quantity ELSE 0 END) as total_reserved,
-        SUM(CASE WHEN m.type = 'liberacion' THEN m.quantity ELSE 0 END) as total_released,
         SUM(m.quantity * m.unit_cost) as total_cost
       ${baseQuery}
     `, values);
@@ -284,7 +267,6 @@ export const cancelMovement = async (req: Request, res: Response) => {
 
     await db.transaction(async () => {
       let newStock = component.current_stock;
-      let newReservedStock = component.reserved_stock || 0;
 
       switch (operation) {
         case 'IN':
@@ -293,17 +275,11 @@ export const cancelMovement = async (req: Request, res: Response) => {
         case 'OUT':
           newStock += movement.quantity;
           break;
-        case 'RESERVE':
-          newReservedStock -= movement.quantity;
-          break;
-        case 'RELEASE':
-          newReservedStock += movement.quantity;
-          break;
       }
 
       await db.run(
-        'UPDATE components SET current_stock = ?, reserved_stock = ?, updated_at = ? WHERE id = ?',
-        [newStock, newReservedStock, new Date().toISOString(), movement.component_id]
+        'UPDATE components SET current_stock = ?, updated_at = ? WHERE id = ?',
+        [newStock, new Date().toISOString(), movement.component_id]
       );
 
       const cancelMovementId = generateId();
@@ -311,12 +287,12 @@ export const cancelMovement = async (req: Request, res: Response) => {
 
       await db.run(
         `INSERT INTO movements (
-          id, type, component_id, quantity, 
+          id, type, component_id, quantity,
           unit_cost, total_cost, reference, notes, user_id, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          cancelMovementId, 
-          movement.type, 
+          cancelMovementId,
+          movement.type,
           movement.component_id,
           -movement.quantity,
           movement.unit_cost,
@@ -331,103 +307,12 @@ export const cancelMovement = async (req: Request, res: Response) => {
       res.json({
         message: 'Movimiento cancelado exitosamente',
         cancelMovementId,
-        newStock,
-        newReservedStock
+        newStock
       });
     });
   } catch (error: any) {
     console.error('Error al cancelar movimiento:', error);
     res.status(400).json({ error: error.message || 'Error al cancelar movimiento' });
-  }
-};
-
-export const createReservation = async (req: Request, res: Response) => {
-  try {
-    const { component_id, quantity, notes } = req.body;
-    const userId = req.user?.userId;
-
-    // Toda la operación dentro de una transacción para evitar condiciones de carrera
-    await db.transaction(async () => {
-      // Leer componente DENTRO de la transacción
-      const component = await db.get(
-        'SELECT * FROM components WHERE id = ?',
-        [component_id]
-      );
-
-      if (!component) {
-        throw new Error('Componente no encontrado');
-      }
-
-      const availableStock = component.current_stock - (component.reserved_stock || 0);
-      if (availableStock < Number(quantity)) {
-        throw new Error(`Stock disponible insuficiente para reservar. Disponible: ${availableStock}, solicitado: ${quantity}`);
-      }
-
-      const newReservedStock = (component.reserved_stock || 0) + Number(quantity);
-
-      await db.run(
-        'UPDATE components SET reserved_stock = ?, updated_at = ? WHERE id = ?',
-        [newReservedStock, new Date().toISOString(), component_id]
-      );
-
-      const reservationId = generateId();
-      const now = new Date().toISOString();
-
-      await db.run(
-        `INSERT INTO movements (
-          id, type, component_id, quantity,
-          unit_cost, total_cost, reference, notes, user_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          reservationId, 'reserva', component_id, quantity,
-          0, 0, `RESERVE-${reservationId}`, notes || 'Reserva de stock', userId, now
-        ]
-      );
-
-      res.status(201).json({
-        message: 'Reserva creada exitosamente',
-        reservation_id: reservationId,
-        new_reserved_stock: newReservedStock
-      });
-    });
-  } catch (error: any) {
-    console.error('Error al crear reserva:', error);
-    res.status(400).json({ error: error.message || 'Error al crear reserva' });
-  }
-};
-
-export const getReservations = async (req: Request, res: Response) => {
-  try {
-    const { component_id } = req.query;
-
-    let query = `
-      SELECT 
-        c.id as component_id,
-        c.code as component_code,
-        c.name as component_name,
-        c.current_stock,
-        c.reserved_stock,
-        (c.current_stock - c.reserved_stock) as available_stock,
-        u.symbol as unit_symbol
-      FROM components c
-      LEFT JOIN units u ON c.unit_id = u.id
-      WHERE c.reserved_stock > 0
-    `;
-
-    const values: any[] = [];
-
-    if (component_id) {
-      query += ' AND c.id = ?';
-      values.push(component_id);
-    }
-
-    query += ' ORDER BY c.name';
-
-    const reservations = await db.query(query, values);
-    res.json({ reservations });
-  } catch (error) {
-    console.error('Error al obtener reservas:', error);
-    res.status(500).json({ error: 'Error al obtener reservas' });
   }
 };
 
@@ -500,15 +385,6 @@ export const createInvoice = async (req: Request, res: Response) => {
               throw new Error(`Stock insuficiente para el componente ${item.component_code}. Stock disponible: ${component.current_stock}, solicitado: ${quantity}`);
             }
             newStock -= quantity;
-            break;
-          case 'RESERVE':
-            if ((component.current_stock - (component.reserved_stock || 0)) < quantity) {
-              throw new Error(`Stock disponible insuficiente para reservar ${item.component_code}`);
-            }
-            await db.run(
-              'UPDATE components SET reserved_stock = ?, updated_at = ? WHERE id = ?',
-              [(component.reserved_stock || 0) + quantity, now, component.id]
-            );
             break;
         }
 

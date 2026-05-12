@@ -249,8 +249,6 @@ export const getComponentStock = async (req: Request, res: Response) => {
         c.code,
         c.name,
         c.current_stock,
-        c.reserved_stock,
-        (c.current_stock - c.reserved_stock) as available_stock,
         c.min_stock,
         c.max_stock,
         u.symbol as unit_symbol

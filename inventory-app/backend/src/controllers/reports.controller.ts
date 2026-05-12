@@ -10,11 +10,9 @@ export const getMovementsReport = async (req: Request, res: Response) => {
         m.id,
         m.created_at,
         m.type as movement_type,
-        CASE 
-          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-          WHEN m.type IN ('salida') THEN 'OUT'
-          WHEN m.type IN ('reserva') THEN 'RESERVE'
-          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+        CASE
+          WHEN m.type = 'entrada' THEN 'IN'
+          WHEN m.type = 'salida' THEN 'OUT'
           ELSE 'IN'
         END as operation,
         m.quantity,
@@ -70,12 +68,10 @@ export const getMovementsReport = async (req: Request, res: Response) => {
       totalMovements: movements.length,
       totalIn: 0,
       totalOut: 0,
-      totalReserved: 0,
-      totalReleased: 0,
       totalCost: 0,
       totalValue: 0
     };
-    
+
     movements.forEach((m: any) => {
       if (m.operation === 'IN') {
         stats.totalIn += m.quantity;
@@ -83,10 +79,6 @@ export const getMovementsReport = async (req: Request, res: Response) => {
       } else if (m.operation === 'OUT') {
         stats.totalOut += m.quantity;
         stats.totalValue += m.total_cost || 0;
-      } else if (m.operation === 'RESERVE') {
-        stats.totalReserved += m.quantity;
-      } else if (m.operation === 'RELEASE') {
-        stats.totalReleased += m.quantity;
       }
     });
     
@@ -121,8 +113,6 @@ export const getInventoryReport = async (_req: Request, res: Response) => {
         c.name,
         c.description,
         c.current_stock,
-        c.reserved_stock,
-        (c.current_stock - c.reserved_stock) as available_stock,
         c.min_stock,
         c.max_stock,
         c.cost_price,
@@ -207,11 +197,9 @@ export const getComponentReport = async (req: Request, res: Response) => {
     let movementsQuery = `
       SELECT 
         m.*,
-        CASE 
-          WHEN m.type IN ('entrada', 'ajuste') THEN 'IN'
-          WHEN m.type IN ('salida') THEN 'OUT'
-          WHEN m.type IN ('reserva') THEN 'RESERVE'
-          WHEN m.type IN ('liberacion') THEN 'RELEASE'
+        CASE
+          WHEN m.type = 'entrada' THEN 'IN'
+          WHEN m.type = 'salida' THEN 'OUT'
           ELSE 'IN'
         END as operation,
         usr.username,
@@ -243,17 +231,15 @@ export const getComponentReport = async (req: Request, res: Response) => {
       totalMovements: movements.length,
       totalIn: 0,
       totalOut: 0,
-      totalReserved: 0,
-      totalReleased: 0,
       netChange: 0,
       averageCost: 0,
       totalCostIn: 0,
       totalValueOut: 0
     };
-    
+
     let totalCostSum = 0;
     let totalInQuantity = 0;
-    
+
     movements.forEach((m: any) => {
       if (m.operation === 'IN') {
         stats.totalIn += m.quantity;
@@ -263,10 +249,6 @@ export const getComponentReport = async (req: Request, res: Response) => {
       } else if (m.operation === 'OUT') {
         stats.totalOut += m.quantity;
         stats.totalValueOut += m.total_cost || 0;
-      } else if (m.operation === 'RESERVE') {
-        stats.totalReserved += m.quantity;
-      } else if (m.operation === 'RELEASE') {
-        stats.totalReleased += m.quantity;
       }
     });
     
