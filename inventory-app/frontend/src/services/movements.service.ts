@@ -57,6 +57,27 @@ export const movementsService = {
     return response.data;
   },
 
+  async createBulkMovements(data: {
+    type: string;
+    reference_number?: string;
+    notes?: string;
+    items: Array<{
+      component_code: string;
+      quantity: number;
+      unit_cost?: number;
+      notes?: string;
+    }>;
+  }): Promise<{
+    message: string;
+    processed: number;
+    failed: number;
+    results: any[];
+    errors: any[];
+  }> {
+    const response = await api.post('/movements/bulk', data);
+    return response.data;
+  },
+
   async clearAllMovements(): Promise<{
     message: string;
     deleted: number;

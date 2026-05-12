@@ -503,3 +503,103 @@ export const clearAllMovements = async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message || 'Error al limpiar movimientos' });
   }
 };
+
+export const createBulkMovements = async (req: Request, res: Response) => {
+  try {
+    const { type: requestType, reference_number, notes: globalNotes, items } = req.body;
+    const userId = req.user?.userId;
+
+    if (!requestType || !VALID_TYPES.includes(requestType)) {
+      return res.status(400).json({ error: `Tipo de movimiento no válido. Valores permitidos: ${VALID_TYPES.join(', ')}` });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Debe incluir al menos un item' });
+    }
+
+    const operation = TYPE_TO_OPERATION[requestType];
+    const results: any[] = [];
+    const errors: any[] = [];
+
+    await db.transaction(async () => {
+      for (const item of items) {
+        const { component_code, quantity, unit_cost = 0, notes } = item;
+
+        if (!component_code || !quantity || Number(quantity) <= 0) {
+          errors.push({ component_code, error: 'Código o cantidad inválidos' });
+          continue;
+        }
+
+        const component = await db.get(
+          'SELECT * FROM components WHERE code = ? AND is_active = 1',
+          [String(component_code).trim()]
+        );
+
+        if (!component) {
+          errors.push({ component_code, error: `Componente con código "${component_code}" no encontrado` });
+          continue;
+        }
+
+        let newStock = component.current_stock;
+        let newCostPrice = component.cost_price || 0;
+        let finalUnitCost = Number(unit_cost) || 0;
+
+        if (operation === 'OUT') {
+          if (finalUnitCost === 0) finalUnitCost = component.cost_price || 0;
+          if (component.current_stock < Number(quantity)) {
+            errors.push({
+              component_code,
+              component_name: component.name,
+              error: `Stock insuficiente. Disponible: ${component.current_stock}, solicitado: ${quantity}`
+            });
+            continue;
+          }
+          newStock -= Number(quantity);
+        } else {
+          newStock += Number(quantity);
+          if (finalUnitCost > newCostPrice) newCostPrice = finalUnitCost;
+        }
+
+        await db.run(
+          'UPDATE components SET current_stock = ?, cost_price = ?, updated_at = ? WHERE id = ?',
+          [newStock, newCostPrice, new Date().toISOString(), component.id]
+        );
+
+        const movementId = generateId();
+        const now = new Date().toISOString();
+        const totalCost = Number(quantity) * finalUnitCost;
+
+        await db.run(
+          `INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [movementId, requestType, component.id, Number(quantity), finalUnitCost, totalCost,
+           reference_number || null, notes || globalNotes || null, userId, now]
+        );
+
+        results.push({
+          component_code,
+          component_name: component.name,
+          quantity: Number(quantity),
+          unit_cost: finalUnitCost,
+          total_cost: totalCost,
+          new_stock: newStock,
+        });
+      }
+
+      if (results.length === 0 && errors.length > 0) {
+        throw new Error('Ningún item pudo ser procesado: ' + errors.map(e => e.error).join('; '));
+      }
+    });
+
+    res.status(201).json({
+      message: `Carga masiva completada: ${results.length} movimientos creados, ${errors.length} errores`,
+      processed: results.length,
+      failed: errors.length,
+      results,
+      errors,
+    });
+  } catch (error: any) {
+    console.error('Error en carga masiva:', error);
+    res.status(400).json({ error: error.message || 'Error en carga masiva' });
+  }
+};

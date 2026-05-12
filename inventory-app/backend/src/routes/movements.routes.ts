@@ -4,6 +4,7 @@ import {
   getMovements,
   createMovement,
   createInvoice,
+  createBulkMovements,
   clearAllMovements
 } from '@/controllers/movements.controller';
 import { authenticate, authorize } from '@/middlewares/auth';
@@ -56,6 +57,18 @@ router.post(
   ],
   validateRequest,
   createInvoice
+);
+
+router.post(
+  '/bulk',
+  authenticate,
+  authorize('admin', 'user'),
+  [
+    body('type').notEmpty().isIn(['entrada', 'salida']).withMessage('Tipo inválido'),
+    body('items').isArray({ min: 1 }).withMessage('Debe incluir al menos un item'),
+  ],
+  validateRequest,
+  createBulkMovements
 );
 
 router.delete(

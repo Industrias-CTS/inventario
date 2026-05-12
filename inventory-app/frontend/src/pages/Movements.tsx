@@ -39,6 +39,7 @@ import {
   Visibility,
   ExpandMore,
   ExpandLess,
+  TableChart,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
@@ -47,6 +48,7 @@ import { movementsService } from '../services/movements.service';
 import { componentsService } from '../services/components.service';
 import { recipesService } from '../services/recipes.service';
 import { authService } from '../services/auth.service';
+import BulkMovementDialog from '../components/BulkMovementDialog';
 
 const MOVEMENT_TYPES = [
   { value: 'entrada', label: 'Entrada', operation: 'IN' },
@@ -103,6 +105,7 @@ export default function Movements() {
   }>>([]);
   const [useRecipe, setUseRecipe] = useState(false);
   const [openClearDialog, setOpenClearDialog] = useState(false);
+  const [openBulkDialog, setOpenBulkDialog] = useState(false);
   const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const [expandedRecipes, setExpandedRecipes] = useState<Set<string>>(new Set());
@@ -389,6 +392,13 @@ export default function Movements() {
               onClick={() => setOpenInvoiceDialog(true)}
             >
               Nueva Factura
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<TableChart />}
+              onClick={() => setOpenBulkDialog(true)}
+            >
+              Carga Masiva
             </Button>
             {isAdmin && (
               <Button
@@ -1167,6 +1177,12 @@ export default function Movements() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Dialog de carga masiva */}
+      <BulkMovementDialog
+        open={openBulkDialog}
+        onClose={() => setOpenBulkDialog(false)}
+      />
 
       {/* Dialog para ver detalles del movimiento */}
       <Dialog
