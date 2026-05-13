@@ -315,15 +315,55 @@ export const checkDuplicateCodes = async (req: Request, res: Response) => {
       WHERE code != TRIM(code) OR code != LOWER(code)
     `);
     
-    res.json({ 
+    res.json({
       duplicates: result,
       problematicCodes,
-      message: code 
-        ? `Componentes con código '${code}'` 
+      message: code
+        ? `Componentes con código '${code}'`
         : 'Análisis de códigos duplicados'
     });
   } catch (error) {
     console.error('Error al verificar códigos duplicados:', error);
     res.status(500).json({ error: 'Error al verificar códigos duplicados' });
+  }
+};
+
+export const validateBulkComponents = async (req: Request, res: Response) => {
+  try {
+    const { items } = req.body as { items: { code: string; descripcion?: string }[] };
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'items debe ser un arreglo no vacío' });
+    }
+
+    const results = await Promise.all(
+      items.map(async (item) => {
+        const code = item.code?.trim() ?? '';
+        const descripcion = item.descripcion?.trim() ?? '';
+
+        const byCode = await db.get(
+          `SELECT id, code, name, unit_id, category_id
+           FROM components WHERE LOWER(TRIM(code)) = LOWER(?) AND is_active = 1`,
+          [code]
+        );
+        if (byCode) return { code, found: true, component: byCode, matchType: 'code' };
+
+        if (descripcion) {
+          const byName = await db.get(
+            `SELECT id, code, name, unit_id, category_id
+             FROM components WHERE LOWER(TRIM(name)) = LOWER(?) AND is_active = 1`,
+            [descripcion]
+          );
+          if (byName) return { code, found: true, component: byName, matchType: 'name' };
+        }
+
+        return { code, found: false, descripcion: descripcion || undefined };
+      })
+    );
+
+    res.json({ results });
+  } catch (error) {
+    console.error('Error en validación bulk:', error);
+    res.status(500).json({ error: 'Error al validar componentes' });
   }
 };

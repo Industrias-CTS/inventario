@@ -10,6 +10,10 @@ router.get('/', auth_1.authenticate, components_controller_1.getComponents);
 router.get('/check-duplicates', auth_1.authenticate, (0, auth_1.authorize)('admin'), components_controller_1.checkDuplicateCodes);
 router.get('/:id', auth_1.authenticate, components_controller_1.getComponentById);
 router.get('/:id/stock', auth_1.authenticate, components_controller_1.getComponentStock);
+router.post('/validate-bulk', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
+    (0, express_validator_1.body)('items').isArray({ min: 1 }).withMessage('items debe ser un arreglo no vacío'),
+    (0, express_validator_1.body)('items.*.code').notEmpty().withMessage('Cada item debe tener un código'),
+], validation_1.validateRequest, components_controller_1.validateBulkComponents);
 router.post('/', auth_1.authenticate, (0, auth_1.authorize)('admin', 'user'), [
     (0, express_validator_1.body)('code').notEmpty().withMessage('El código es requerido'),
     (0, express_validator_1.body)('name').notEmpty().withMessage('El nombre es requerido'),

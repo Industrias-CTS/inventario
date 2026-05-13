@@ -64,4 +64,17 @@ export const componentsService = {
     const response = await api.get<{ stock: StockInfo }>(`/components/${id}/stock`);
     return response.data;
   },
+
+  async validateBulk(items: { code: string; descripcion?: string }[]): Promise<{
+    results: Array<{
+      code: string;
+      found: boolean;
+      component?: { id: string; code: string; name: string; unit_id: string };
+      matchType?: 'code' | 'name';
+      descripcion?: string;
+    }>;
+  }> {
+    const response = await api.post('/components/validate-bulk', { items });
+    return response.data;
+  },
 };

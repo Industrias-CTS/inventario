@@ -7,7 +7,8 @@ import {
   updateComponent,
   deleteComponent,
   getComponentStock,
-  checkDuplicateCodes
+  checkDuplicateCodes,
+  validateBulkComponents,
 } from '@/controllers/components.controller';
 import { authenticate, authorize } from '@/middlewares/auth';
 import { validateRequest } from '@/middlewares/validation';
@@ -18,6 +19,18 @@ router.get('/', authenticate, getComponents);
 router.get('/check-duplicates', authenticate, authorize('admin'), checkDuplicateCodes);
 router.get('/:id', authenticate, getComponentById);
 router.get('/:id/stock', authenticate, getComponentStock);
+
+router.post(
+  '/validate-bulk',
+  authenticate,
+  authorize('admin', 'user'),
+  [
+    body('items').isArray({ min: 1 }).withMessage('items debe ser un arreglo no vacío'),
+    body('items.*.code').notEmpty().withMessage('Cada item debe tener un código'),
+  ],
+  validateRequest,
+  validateBulkComponents
+);
 
 router.post(
   '/',

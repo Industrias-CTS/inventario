@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkDuplicateCodes = exports.getUnits = exports.getCategories = exports.getComponentStock = exports.deleteComponent = exports.updateComponent = exports.createComponent = exports.getComponentById = exports.getComponents = void 0;
+exports.validateBulkComponents = exports.checkDuplicateCodes = exports.getUnits = exports.getCategories = exports.getComponentStock = exports.deleteComponent = exports.updateComponent = exports.createComponent = exports.getComponentById = exports.getComponents = void 0;
 const database_config_1 = require("../config/database.config");
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const getComponents = async (req, res) => {
@@ -275,4 +275,33 @@ const checkDuplicateCodes = async (req, res) => {
     }
 };
 exports.checkDuplicateCodes = checkDuplicateCodes;
+const validateBulkComponents = async (req, res) => {
+    try {
+        const { items } = req.body;
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'items debe ser un arreglo no vacío' });
+        }
+        const results = await Promise.all(items.map(async (item) => {
+            const code = item.code?.trim() ?? '';
+            const descripcion = item.descripcion?.trim() ?? '';
+            const byCode = await database_config_1.db.get(`SELECT id, code, name, unit_id, category_id
+           FROM components WHERE LOWER(TRIM(code)) = LOWER(?) AND is_active = 1`, [code]);
+            if (byCode)
+                return { code, found: true, component: byCode, matchType: 'code' };
+            if (descripcion) {
+                const byName = await database_config_1.db.get(`SELECT id, code, name, unit_id, category_id
+             FROM components WHERE LOWER(TRIM(name)) = LOWER(?) AND is_active = 1`, [descripcion]);
+                if (byName)
+                    return { code, found: true, component: byName, matchType: 'name' };
+            }
+            return { code, found: false, descripcion: descripcion || undefined };
+        }));
+        res.json({ results });
+    }
+    catch (error) {
+        console.error('Error en validación bulk:', error);
+        res.status(500).json({ error: 'Error al validar componentes' });
+    }
+};
+exports.validateBulkComponents = validateBulkComponents;
 //# sourceMappingURL=components.controller.js.map

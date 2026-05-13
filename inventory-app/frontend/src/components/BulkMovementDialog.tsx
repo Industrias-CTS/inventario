@@ -23,6 +23,7 @@ import {
   Step,
   StepLabel,
   CircularProgress,
+  Checkbox,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -31,8 +32,11 @@ import {
   Error as ErrorIcon,
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { movementsService } from '../services/movements.service';
+import { componentsService } from '../services/components.service';
+import { unitsService } from '../services/units.service';
+import { categoriesService } from '../services/categories.service';
 
 const MOVEMENT_TYPES = [
   { value: 'entrada', label: 'Entrada (agregar stock)' },
@@ -41,6 +45,7 @@ const MOVEMENT_TYPES = [
 
 const TEMPLATE_COLUMNS = [
   { key: 'codigo', label: 'codigo', required: true, example: 'RES-001' },
+  { key: 'descripcion', label: 'descripcion', required: false, example: 'Resistencia 1kΩ' },
   { key: 'cantidad', label: 'cantidad', required: true, example: '10' },
   { key: 'costo_unitario', label: 'costo_unitario', required: false, example: '1500' },
   { key: 'referencia', label: 'referencia', required: false, example: 'OC-2024-001' },
@@ -49,6 +54,7 @@ const TEMPLATE_COLUMNS = [
 
 interface ParsedRow {
   codigo: string;
+  descripcion?: string;
   cantidad: number;
   costo_unitario?: number;
   referencia?: string;
@@ -57,12 +63,27 @@ interface ParsedRow {
   _error?: string;
 }
 
+interface ValidationResult {
+  code: string;
+  found: boolean;
+  component?: { id: string; code: string; name: string; unit_id: string };
+  matchType?: 'code' | 'name';
+  descripcion?: string;
+}
+
+interface MissingForm {
+  selected: boolean;
+  nombre: string;
+  unit_id: string;
+  category_id: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-const STEPS = ['Configurar', 'Cargar archivo', 'Revisar y confirmar'];
+const STEPS = ['Configurar', 'Cargar archivo', 'Validar componentes', 'Revisar y confirmar'];
 
 export default function BulkMovementDialog({ open, onClose }: Props) {
   const queryClient = useQueryClient();
@@ -76,6 +97,21 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
   const [fileName, setFileName] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [result, setResult] = useState<any>(null);
+  const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+  const [isValidating, setIsValidating] = useState(false);
+  const [missingForms, setMissingForms] = useState<Record<string, MissingForm>>({});
+  const [isCreatingComponents, setIsCreatingComponents] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const { data: unitsData } = useQuery({
+    queryKey: ['units'],
+    queryFn: unitsService.getUnits,
+  });
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: categoriesService.getCategories,
+  });
 
   const bulkMutation = useMutation({
     mutationFn: movementsService.createBulkMovements,
@@ -99,42 +135,44 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
     setFileName('');
     setUploadError('');
     setResult(null);
+    setValidationResults([]);
+    setIsValidating(false);
+    setMissingForms({});
+    setIsCreatingComponents(false);
+    setCreateError('');
     onClose();
   };
 
   const downloadTemplate = () => {
     const wb = XLSX.utils.book_new();
 
-    // Fila de encabezados
     const headers = TEMPLATE_COLUMNS.map(c => c.label);
-    // Filas de ejemplo
     const exampleRows = [
-      ['RES-001', 10, 1500, 'OC-2024-001', 'Ejemplo entrada'],
-      ['CAP-100', 50, 200, 'OC-2024-001', ''],
-      ['LED-5MM', 100, '', '', ''],
+      ['RES-001', 'Resistencia 1kΩ', 10, 1500, 'OC-2024-001', 'Ejemplo entrada'],
+      ['CAP-100', 'Capacitor 100uF', 50, 200, 'OC-2024-001', ''],
+      ['LED-5MM', 'LED 5mm Rojo', 100, '', '', ''],
     ];
 
     const wsData = [headers, ...exampleRows];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // Ancho de columnas
     ws['!cols'] = [
       { wch: 18 }, // codigo
+      { wch: 28 }, // descripcion
       { wch: 12 }, // cantidad
       { wch: 16 }, // costo_unitario
       { wch: 18 }, // referencia
       { wch: 30 }, // notas
     ];
 
-    // Estilo de encabezado (nota: xlsx community edition no soporta estilos completos, usamos comentario)
     XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
 
-    // Segunda hoja con instrucciones
     const instrData = [
       ['INSTRUCCIONES DE USO'],
       [''],
       ['Campo', 'Requerido', 'Descripción'],
-      ['codigo', 'SÍ', 'Código exacto del componente en el sistema'],
+      ['codigo', 'SÍ', 'Código del componente en el sistema'],
+      ['descripcion', 'NO', 'Nombre/descripción del componente (se usa para crear si no existe)'],
       ['cantidad', 'SÍ', 'Cantidad a mover (número positivo)'],
       ['costo_unitario', 'NO', 'Costo por unidad (solo aplica para entradas)'],
       ['referencia', 'NO', 'Número de orden, factura u otra referencia'],
@@ -142,16 +180,63 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
       [''],
       ['NOTAS IMPORTANTES:'],
       ['- No modificar los nombres de las columnas'],
-      ['- El código del componente debe existir en el sistema'],
+      ['- Si el código no existe, se validará también por descripcion'],
+      ['- Los componentes faltantes se pueden crear antes de registrar el movimiento'],
       ['- La cantidad debe ser un número mayor a cero'],
       ['- Para salidas: no se puede retirar más stock del disponible'],
       ['- Elimine las filas de ejemplo antes de cargar'],
     ];
     const wsInstr = XLSX.utils.aoa_to_sheet(instrData);
-    wsInstr['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 55 }];
+    wsInstr['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 65 }];
     XLSX.utils.book_append_sheet(wb, wsInstr, 'Instrucciones');
 
     XLSX.writeFile(wb, `plantilla_movimientos_${movementType}.xlsx`);
+  };
+
+  const validateComponents = async (rows: ParsedRow[]) => {
+    setIsValidating(true);
+    setUploadError('');
+    setCreateError('');
+    try {
+      const validItems = rows.filter(r => !r._error && r.codigo);
+      const uniqueCodes = Array.from(new Set(validItems.map(r => r.codigo)));
+      const items = uniqueCodes.map(code => {
+        const row = validItems.find(r => r.codigo === code);
+        return { code, descripcion: row?.descripcion };
+      });
+
+      const { results } = await componentsService.validateBulk(items);
+      setValidationResults(results);
+
+      // Update codes in rows for found-by-name (use actual component code)
+      const codeMap: Record<string, string> = {};
+      const forms: Record<string, MissingForm> = {};
+
+      results.forEach(r => {
+        if (r.found && r.matchType === 'name' && r.component) {
+          codeMap[r.code] = r.component.code;
+        } else if (!r.found) {
+          forms[r.code] = {
+            selected: true,
+            nombre: r.descripcion || '',
+            unit_id: '',
+            category_id: '',
+          };
+        }
+      });
+
+      setMissingForms(forms);
+
+      if (Object.keys(codeMap).length > 0) {
+        setParsedRows(rows.map(row =>
+          codeMap[row.codigo] ? { ...row, codigo: codeMap[row.codigo] } : row
+        ));
+      }
+    } catch {
+      setUploadError('Error al validar los componentes contra el sistema. Verifique la conexión.');
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -160,9 +245,11 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
 
     setUploadError('');
     setFileName(file.name);
+    setValidationResults([]);
+    setMissingForms({});
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const data = evt.target?.result;
         const wb = XLSX.read(data, { type: 'binary' });
@@ -174,13 +261,13 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
           return;
         }
 
-        // Normalizar encabezados
         const headers: string[] = (raw[0] as any[]).map((h: any) =>
           String(h).trim().toLowerCase().replace(/\s+/g, '_')
         );
 
         const codigoIdx = headers.indexOf('codigo');
         const cantidadIdx = headers.indexOf('cantidad');
+        const descIdx = headers.indexOf('descripcion');
         const costoIdx = headers.indexOf('costo_unitario');
         const refIdx = headers.indexOf('referencia');
         const notasIdx = headers.indexOf('notas');
@@ -197,7 +284,6 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
           const codigo = String(row[codigoIdx] || '').trim();
           const cantidadRaw = row[cantidadIdx];
 
-          // Saltar filas vacías
           if (!codigo && !cantidadRaw) continue;
 
           const cantidad = parseFloat(String(cantidadRaw));
@@ -208,6 +294,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
 
           rows.push({
             codigo,
+            descripcion: descIdx >= 0 ? String(row[descIdx] || '').trim() || undefined : undefined,
             cantidad: isNaN(cantidad) ? 0 : cantidad,
             costo_unitario: costoIdx >= 0 && row[costoIdx] !== '' ? parseFloat(String(row[costoIdx])) : undefined,
             referencia: refIdx >= 0 ? String(row[refIdx] || '').trim() || undefined : undefined,
@@ -224,14 +311,65 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
 
         setParsedRows(rows);
         setStep(2);
+        await validateComponents(rows);
       } catch {
         setUploadError('Error al leer el archivo. Asegúrese de que es un archivo Excel (.xlsx o .xls) válido');
       }
     };
     reader.readAsBinaryString(file);
 
-    // Reset input so same file can be re-uploaded
     e.target.value = '';
+  };
+
+  const handleCreateAndContinue = async () => {
+    const toCreate = Object.entries(missingForms).filter(
+      ([, f]) => f.selected
+    );
+
+    setIsCreatingComponents(true);
+    setCreateError('');
+
+    const errors: string[] = [];
+    for (const [code, form] of toCreate) {
+      try {
+        await componentsService.createComponent({
+          code,
+          name: form.nombre,
+          unit_id: form.unit_id,
+          category_id: form.category_id || undefined,
+        });
+      } catch (err: any) {
+        errors.push(`${code}: ${err.response?.data?.error || err.message}`);
+      }
+    }
+
+    setIsCreatingComponents(false);
+
+    if (errors.length > 0) {
+      setCreateError(`Errores al crear componentes: ${errors.join(' | ')}`);
+      return;
+    }
+
+    if (toCreate.length > 0) {
+      queryClient.invalidateQueries({ queryKey: ['components'] });
+    }
+
+    // Mark uncreated (unchecked) missing codes as errors so they're excluded from validRows
+    const uncreatedCodes = new Set(
+      Object.entries(missingForms)
+        .filter(([, f]) => !f.selected)
+        .map(([code]) => code)
+    );
+
+    if (uncreatedCodes.size > 0) {
+      setParsedRows(prev => prev.map(row =>
+        uncreatedCodes.has(row.codigo)
+          ? { ...row, _error: 'Componente no registrado en el sistema' }
+          : row
+      ));
+    }
+
+    setStep(3);
   };
 
   const validRows = parsedRows.filter(r => !r._error);
@@ -253,11 +391,21 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
     });
   };
 
+  // Derived validation state
+  const foundByCode = validationResults.filter(r => r.found && r.matchType === 'code');
+  const foundByName = validationResults.filter(r => r.found && r.matchType === 'name');
+  const notFound = validationResults.filter(r => !r.found);
+  const allFound = validationResults.length > 0 && notFound.length === 0;
+  const selectedToCreate = Object.values(missingForms).filter(f => f.selected).length;
+  const hasInvalidForms = Object.values(missingForms).some(
+    f => f.selected && (!f.nombre.trim() || !f.unit_id)
+  );
+
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>Carga Masiva de Movimientos</DialogTitle>
       <DialogContent>
-        <Stepper activeStep={result ? 3 : step} sx={{ mb: 3, mt: 1 }}>
+        <Stepper activeStep={result ? 4 : step} sx={{ mb: 3, mt: 1 }}>
           {STEPS.map(label => (
             <Step key={label}><StepLabel>{label}</StepLabel></Step>
           ))}
@@ -342,7 +490,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Cargue la plantilla Excel diligenciada. El archivo debe tener los encabezados exactos:
-              <strong> codigo, cantidad, costo_unitario, referencia, notas</strong>
+              <strong> codigo, descripcion, cantidad, costo_unitario, referencia, notas</strong>
             </Typography>
 
             {uploadError && (
@@ -381,8 +529,180 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
           </Box>
         )}
 
-        {/* PASO 2: Revisar */}
-        {step === 2 && !result && (
+        {/* PASO 2: Validar componentes */}
+        {step === 2 && (
+          <Box>
+            {isValidating ? (
+              <Box sx={{ textAlign: 'center', py: 5 }}>
+                <CircularProgress sx={{ mb: 2 }} />
+                <Typography color="text.secondary">Validando componentes en el sistema...</Typography>
+              </Box>
+            ) : (
+              <>
+                {/* Resumen */}
+                <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                  {foundByCode.length > 0 && (
+                    <Chip
+                      icon={<CheckCircle />}
+                      label={`${foundByCode.length} encontrado${foundByCode.length !== 1 ? 's' : ''} por código`}
+                      color="success"
+                      size="small"
+                    />
+                  )}
+                  {foundByName.length > 0 && (
+                    <Chip
+                      label={`${foundByName.length} encontrado${foundByName.length !== 1 ? 's' : ''} por descripción`}
+                      color="warning"
+                      size="small"
+                    />
+                  )}
+                  {notFound.length > 0 && (
+                    <Chip
+                      icon={<ErrorIcon />}
+                      label={`${notFound.length} no encontrado${notFound.length !== 1 ? 's' : ''}`}
+                      color="error"
+                      size="small"
+                    />
+                  )}
+                </Box>
+
+                {allFound && (
+                  <Alert severity="success" sx={{ mb: 2 }}>
+                    Todos los componentes están registrados. Puede continuar.
+                  </Alert>
+                )}
+
+                {/* Encontrados por nombre — se usará su código real */}
+                {foundByName.length > 0 && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      Componentes encontrados por descripción (se usará su código real):
+                    </Typography>
+                    {foundByName.map(r => (
+                      <Typography key={r.code} variant="body2">
+                        • Plantilla: <strong>{r.code}</strong> → Real: <strong>{r.component?.code}</strong> ({r.component?.name})
+                      </Typography>
+                    ))}
+                  </Alert>
+                )}
+
+                {/* No encontrados */}
+                {notFound.length > 0 && (
+                  <>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Componentes no encontrados — seleccione cuáles desea crear:
+                    </Typography>
+                    <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell padding="checkbox">Crear</TableCell>
+                            <TableCell>Código</TableCell>
+                            <TableCell>Nombre *</TableCell>
+                            <TableCell>Unidad *</TableCell>
+                            <TableCell>Categoría</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {notFound.map(r => {
+                            const form = missingForms[r.code] ?? {
+                              selected: false, nombre: '', unit_id: '', category_id: '',
+                            };
+                            return (
+                              <TableRow key={r.code}>
+                                <TableCell padding="checkbox">
+                                  <Checkbox
+                                    checked={form.selected}
+                                    onChange={(e) => setMissingForms(prev => ({
+                                      ...prev,
+                                      [r.code]: { ...form, selected: e.target.checked },
+                                    }))}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <code>{r.code}</code>
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    value={form.nombre}
+                                    onChange={(e) => setMissingForms(prev => ({
+                                      ...prev,
+                                      [r.code]: { ...form, nombre: e.target.value },
+                                    }))}
+                                    placeholder="Nombre del componente"
+                                    disabled={!form.selected}
+                                    error={form.selected && !form.nombre.trim()}
+                                    sx={{ minWidth: 180 }}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    select
+                                    size="small"
+                                    value={form.unit_id}
+                                    onChange={(e) => setMissingForms(prev => ({
+                                      ...prev,
+                                      [r.code]: { ...form, unit_id: e.target.value },
+                                    }))}
+                                    disabled={!form.selected}
+                                    error={form.selected && !form.unit_id}
+                                    sx={{ minWidth: 110 }}
+                                    SelectProps={{ displayEmpty: true }}
+                                  >
+                                    <MenuItem value="" disabled>Unidad</MenuItem>
+                                    {unitsData?.units.map(u => (
+                                      <MenuItem key={u.id} value={u.id}>
+                                        {u.name} ({u.symbol})
+                                      </MenuItem>
+                                    ))}
+                                  </TextField>
+                                </TableCell>
+                                <TableCell>
+                                  <TextField
+                                    select
+                                    size="small"
+                                    value={form.category_id}
+                                    onChange={(e) => setMissingForms(prev => ({
+                                      ...prev,
+                                      [r.code]: { ...form, category_id: e.target.value },
+                                    }))}
+                                    disabled={!form.selected}
+                                    sx={{ minWidth: 120 }}
+                                    SelectProps={{ displayEmpty: true }}
+                                  >
+                                    <MenuItem value="">Sin categoría</MenuItem>
+                                    {categoriesData?.categories.map(c => (
+                                      <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                                    ))}
+                                  </TextField>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </>
+                )}
+
+                {uploadError && (
+                  <Alert severity="error" sx={{ mb: 1 }} onClose={() => setUploadError('')}>
+                    {uploadError}
+                  </Alert>
+                )}
+                {createError && (
+                  <Alert severity="error" onClose={() => setCreateError('')}>
+                    {createError}
+                  </Alert>
+                )}
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* PASO 3: Revisar */}
+        {step === 3 && !result && (
           <Box>
             <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
               <Chip
@@ -558,13 +878,45 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
         )}
 
         {/* Paso 2 */}
-        {step === 2 && !result && (
+        {step === 2 && !isValidating && (
           <>
             <Button
               onClick={() => {
                 setParsedRows([]);
                 setFileName('');
                 setUploadError('');
+                setValidationResults([]);
+                setMissingForms({});
+                setStep(1);
+              }}
+            >
+              Cargar otro archivo
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleCreateAndContinue}
+              disabled={isCreatingComponents || hasInvalidForms}
+              startIcon={isCreatingComponents ? <CircularProgress size={18} /> : undefined}
+            >
+              {isCreatingComponents
+                ? 'Creando componentes...'
+                : selectedToCreate > 0
+                  ? `Crear ${selectedToCreate} componente${selectedToCreate !== 1 ? 's' : ''} y continuar`
+                  : 'Continuar'}
+            </Button>
+          </>
+        )}
+
+        {/* Paso 3 */}
+        {step === 3 && !result && (
+          <>
+            <Button
+              onClick={() => {
+                setParsedRows([]);
+                setFileName('');
+                setUploadError('');
+                setValidationResults([]);
+                setMissingForms({});
                 setStep(1);
               }}
             >
