@@ -65,13 +65,13 @@ export const componentsService = {
     return response.data;
   },
 
-  async validateBulk(items: { code: string; descripcion?: string }[]): Promise<{
+  async validateBulk(items: { code: string; nombre?: string }[]): Promise<{
     results: Array<{
       code: string;
       found: boolean;
       component?: { id: string; code: string; name: string; unit_id: string };
       matchType?: 'code' | 'name';
-      descripcion?: string;
+      nombre?: string;
     }>;
   }> {
     const response = await api.post('/components/validate-bulk', { items });

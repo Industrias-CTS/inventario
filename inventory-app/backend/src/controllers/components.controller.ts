@@ -330,7 +330,7 @@ export const checkDuplicateCodes = async (req: Request, res: Response) => {
 
 export const validateBulkComponents = async (req: Request, res: Response) => {
   try {
-    const { items } = req.body as { items: { code: string; descripcion?: string }[] };
+    const { items } = req.body as { items: { code: string; nombre?: string }[] };
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'items debe ser un arreglo no vacío' });
@@ -339,7 +339,7 @@ export const validateBulkComponents = async (req: Request, res: Response) => {
     const results = await Promise.all(
       items.map(async (item) => {
         const code = item.code?.trim() ?? '';
-        const descripcion = item.descripcion?.trim() ?? '';
+        const nombre = item.nombre?.trim() ?? '';
 
         const byCode = await db.get(
           `SELECT id, code, name, unit_id, category_id
@@ -348,16 +348,16 @@ export const validateBulkComponents = async (req: Request, res: Response) => {
         );
         if (byCode) return { code, found: true, component: byCode, matchType: 'code' };
 
-        if (descripcion) {
+        if (nombre) {
           const byName = await db.get(
             `SELECT id, code, name, unit_id, category_id
              FROM components WHERE LOWER(TRIM(name)) = LOWER(?) AND is_active = 1`,
-            [descripcion]
+            [nombre]
           );
           if (byName) return { code, found: true, component: byName, matchType: 'name' };
         }
 
-        return { code, found: false, descripcion: descripcion || undefined };
+        return { code, found: false, nombre: nombre || undefined };
       })
     );
 

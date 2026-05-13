@@ -45,7 +45,7 @@ const MOVEMENT_TYPES = [
 
 const TEMPLATE_COLUMNS = [
   { key: 'codigo', label: 'codigo', required: true, example: 'RES-001' },
-  { key: 'descripcion', label: 'descripcion', required: false, example: 'Resistencia 1kΩ' },
+  { key: 'nombre', label: 'nombre', required: false, example: 'Resistencia 1kΩ' },
   { key: 'cantidad', label: 'cantidad', required: true, example: '10' },
   { key: 'costo_unitario', label: 'costo_unitario', required: false, example: '1500' },
   { key: 'referencia', label: 'referencia', required: false, example: 'OC-2024-001' },
@@ -54,7 +54,7 @@ const TEMPLATE_COLUMNS = [
 
 interface ParsedRow {
   codigo: string;
-  descripcion?: string;
+  nombre?: string;
   cantidad: number;
   costo_unitario?: number;
   referencia?: string;
@@ -68,7 +68,7 @@ interface ValidationResult {
   found: boolean;
   component?: { id: string; code: string; name: string; unit_id: string };
   matchType?: 'code' | 'name';
-  descripcion?: string;
+  nombre?: string;
 }
 
 interface MissingForm {
@@ -150,7 +150,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
     const exampleRows = [
       ['RES-001', 'Resistencia 1kΩ', 10, 1500, 'OC-2024-001', 'Ejemplo entrada'],
       ['CAP-100', 'Capacitor 100uF', 50, 200, 'OC-2024-001', ''],
-      ['LED-5MM', 'LED 5mm Rojo', 100, '', '', ''],
+      ['LED-5MM', 'LED Rojo 5mm', 100, '', '', ''],
     ];
 
     const wsData = [headers, ...exampleRows];
@@ -172,7 +172,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
       [''],
       ['Campo', 'Requerido', 'Descripción'],
       ['codigo', 'SÍ', 'Código del componente en el sistema'],
-      ['descripcion', 'NO', 'Nombre/descripción del componente (se usa para crear si no existe)'],
+      ['nombre', 'NO', 'Nombre del componente (se usa para buscarlo o crearlo si no existe)'],
       ['cantidad', 'SÍ', 'Cantidad a mover (número positivo)'],
       ['costo_unitario', 'NO', 'Costo por unidad (solo aplica para entradas)'],
       ['referencia', 'NO', 'Número de orden, factura u otra referencia'],
@@ -180,7 +180,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
       [''],
       ['NOTAS IMPORTANTES:'],
       ['- No modificar los nombres de las columnas'],
-      ['- Si el código no existe, se validará también por descripcion'],
+      ['- Si el código no existe, se validará también por nombre'],
       ['- Los componentes faltantes se pueden crear antes de registrar el movimiento'],
       ['- La cantidad debe ser un número mayor a cero'],
       ['- Para salidas: no se puede retirar más stock del disponible'],
@@ -202,7 +202,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
       const uniqueCodes = Array.from(new Set(validItems.map(r => r.codigo)));
       const items = uniqueCodes.map(code => {
         const row = validItems.find(r => r.codigo === code);
-        return { code, descripcion: row?.descripcion };
+        return { code, nombre: row?.nombre };
       });
 
       const { results } = await componentsService.validateBulk(items);
@@ -218,7 +218,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
         } else if (!r.found) {
           forms[r.code] = {
             selected: true,
-            nombre: r.descripcion || '',
+            nombre: r.nombre || '',
             unit_id: '',
             category_id: '',
           };
@@ -267,7 +267,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
 
         const codigoIdx = headers.indexOf('codigo');
         const cantidadIdx = headers.indexOf('cantidad');
-        const descIdx = headers.indexOf('descripcion');
+        const nombreIdx = headers.indexOf('nombre');
         const costoIdx = headers.indexOf('costo_unitario');
         const refIdx = headers.indexOf('referencia');
         const notasIdx = headers.indexOf('notas');
@@ -294,7 +294,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
 
           rows.push({
             codigo,
-            descripcion: descIdx >= 0 ? String(row[descIdx] || '').trim() || undefined : undefined,
+            nombre: nombreIdx >= 0 ? String(row[nombreIdx] || '').trim() || undefined : undefined,
             cantidad: isNaN(cantidad) ? 0 : cantidad,
             costo_unitario: costoIdx >= 0 && row[costoIdx] !== '' ? parseFloat(String(row[costoIdx])) : undefined,
             referencia: refIdx >= 0 ? String(row[refIdx] || '').trim() || undefined : undefined,
@@ -490,7 +490,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Cargue la plantilla Excel diligenciada. El archivo debe tener los encabezados exactos:
-              <strong> codigo, descripcion, cantidad, costo_unitario, referencia, notas</strong>
+              <strong> codigo, nombre, cantidad, costo_unitario, referencia, notas</strong>
             </Typography>
 
             {uploadError && (

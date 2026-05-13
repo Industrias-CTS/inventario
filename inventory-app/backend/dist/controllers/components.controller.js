@@ -283,18 +283,18 @@ const validateBulkComponents = async (req, res) => {
         }
         const results = await Promise.all(items.map(async (item) => {
             const code = item.code?.trim() ?? '';
-            const descripcion = item.descripcion?.trim() ?? '';
+            const nombre = item.nombre?.trim() ?? '';
             const byCode = await database_config_1.db.get(`SELECT id, code, name, unit_id, category_id
            FROM components WHERE LOWER(TRIM(code)) = LOWER(?) AND is_active = 1`, [code]);
             if (byCode)
                 return { code, found: true, component: byCode, matchType: 'code' };
-            if (descripcion) {
+            if (nombre) {
                 const byName = await database_config_1.db.get(`SELECT id, code, name, unit_id, category_id
-             FROM components WHERE LOWER(TRIM(name)) = LOWER(?) AND is_active = 1`, [descripcion]);
+             FROM components WHERE LOWER(TRIM(name)) = LOWER(?) AND is_active = 1`, [nombre]);
                 if (byName)
                     return { code, found: true, component: byName, matchType: 'name' };
             }
-            return { code, found: false, descripcion: descripcion || undefined };
+            return { code, found: false, nombre: nombre || undefined };
         }));
         res.json({ results });
     }
