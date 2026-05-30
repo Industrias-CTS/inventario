@@ -15,6 +15,8 @@ const DB_TYPE = process.env.DB_TYPE || 'sqlite';
 
 class DatabaseManager {
   private db: DatabaseConfig | null = null;
+  private txQueue: Promise<unknown> = Promise.resolve();
+  private txCounter = 0;
 
   async initialize(): Promise<void> {
     if (this.db) return;
@@ -51,24 +53,24 @@ class DatabaseManager {
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
     if (!this.db) await this.initialize();
 
-    try {
-      await this.run('BEGIN TRANSACTION');
-    } catch (beginError) {
-      // Si ya hay una transacción activa, hacer ROLLBACK primero
-      try { await this.run('ROLLBACK'); } catch (_) {}
-      await this.run('BEGIN TRANSACTION');
-    }
+    const sp = `sp_${++this.txCounter}`;
 
-    try {
-      const result = await callback();
-      await this.run('COMMIT');
-      return result;
-    } catch (error) {
-      try { await this.run('ROLLBACK'); } catch (rollbackError) {
-        console.error('Error en ROLLBACK:', rollbackError);
+    const run = async (): Promise<T> => {
+      await this.run(`SAVEPOINT ${sp}`);
+      try {
+        const result = await callback();
+        await this.run(`RELEASE SAVEPOINT ${sp}`);
+        return result;
+      } catch (error) {
+        try { await this.run(`ROLLBACK TO SAVEPOINT ${sp}`); } catch (_) {}
+        try { await this.run(`RELEASE SAVEPOINT ${sp}`); } catch (_) {}
+        throw error;
       }
-      throw error;
-    }
+    };
+
+    const next = this.txQueue.then(run, run);
+    this.txQueue = next.catch(() => {});
+    return next;
   }
 }
 

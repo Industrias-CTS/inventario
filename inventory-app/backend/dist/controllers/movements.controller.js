@@ -400,7 +400,7 @@ const clearAllMovements = async (req, res) => {
 exports.clearAllMovements = clearAllMovements;
 const createBulkMovements = async (req, res) => {
     try {
-        const { type: requestType, reference_number, notes: globalNotes, items } = req.body;
+        const { type: requestType, reference_number, notes: globalNotes, items, recipe_id, recipe_name } = req.body;
         const userId = req.user?.userId;
         if (!requestType || !VALID_TYPES.includes(requestType)) {
             return res.status(400).json({ error: `Tipo de movimiento no válido. Valores permitidos: ${VALID_TYPES.join(', ')}` });
@@ -409,34 +409,55 @@ const createBulkMovements = async (req, res) => {
             return res.status(400).json({ error: 'Debe incluir al menos un item' });
         }
         const operation = TYPE_TO_OPERATION[requestType];
+        // Pass 1: validate all items before touching any data — all-or-nothing semantics
+        const preErrors = [];
+        const componentCache = {};
+        for (const item of items) {
+            const { component_code, quantity } = item;
+            if (!component_code || !quantity || Number(quantity) <= 0) {
+                preErrors.push({ component_code, error: 'Código o cantidad inválidos' });
+                continue;
+            }
+            const code = String(component_code).trim();
+            const component = await database_config_1.db.get('SELECT * FROM components WHERE code = ? AND is_active = 1', [code]);
+            if (!component) {
+                preErrors.push({ component_code, error: `Componente con código "${component_code}" no encontrado` });
+                continue;
+            }
+            if (operation === 'OUT' && component.current_stock < Number(quantity)) {
+                preErrors.push({
+                    component_code,
+                    component_name: component.name,
+                    available_stock: component.current_stock,
+                    requested_quantity: Number(quantity),
+                    error: `Stock insuficiente. Disponible: ${component.current_stock}, solicitado: ${quantity}`
+                });
+                continue;
+            }
+            componentCache[code] = component;
+        }
+        if (preErrors.length > 0) {
+            return res.status(400).json({
+                error: `No se pueden crear los movimientos: ${preErrors.length} componente(s) con error`,
+                processed: 0,
+                failed: preErrors.length,
+                results: [],
+                errors: preErrors,
+            });
+        }
+        // Pass 2: execute all inside a single transaction — guaranteed atomic
         const results = [];
-        const errors = [];
         await database_config_1.db.transaction(async () => {
             for (const item of items) {
                 const { component_code, quantity, unit_cost = 0, notes } = item;
-                if (!component_code || !quantity || Number(quantity) <= 0) {
-                    errors.push({ component_code, error: 'Código o cantidad inválidos' });
-                    continue;
-                }
-                const component = await database_config_1.db.get('SELECT * FROM components WHERE code = ? AND is_active = 1', [String(component_code).trim()]);
-                if (!component) {
-                    errors.push({ component_code, error: `Componente con código "${component_code}" no encontrado` });
-                    continue;
-                }
+                const code = String(component_code).trim();
+                const component = componentCache[code];
                 let newStock = component.current_stock;
                 let newCostPrice = component.cost_price || 0;
                 let finalUnitCost = Number(unit_cost) || 0;
                 if (operation === 'OUT') {
                     if (finalUnitCost === 0)
                         finalUnitCost = component.cost_price || 0;
-                    if (component.current_stock < Number(quantity)) {
-                        errors.push({
-                            component_code,
-                            component_name: component.name,
-                            error: `Stock insuficiente. Disponible: ${component.current_stock}, solicitado: ${quantity}`
-                        });
-                        continue;
-                    }
                     newStock -= Number(quantity);
                 }
                 else {
@@ -448,9 +469,9 @@ const createBulkMovements = async (req, res) => {
                 const movementId = generateId();
                 const now = new Date().toISOString();
                 const totalCost = Number(quantity) * finalUnitCost;
-                await database_config_1.db.run(`INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [movementId, requestType, component.id, Number(quantity), finalUnitCost, totalCost,
-                    reference_number || null, notes || globalNotes || null, userId, now]);
+                await database_config_1.db.run(`INSERT INTO movements (id, type, component_id, quantity, unit_cost, total_cost, reference, notes, user_id, recipe_id, recipe_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [movementId, requestType, component.id, Number(quantity), finalUnitCost, totalCost,
+                    reference_number || null, notes || globalNotes || null, userId, recipe_id || null, recipe_name || null, now]);
                 results.push({
                     component_code,
                     component_name: component.name,
@@ -460,16 +481,13 @@ const createBulkMovements = async (req, res) => {
                     new_stock: newStock,
                 });
             }
-            if (results.length === 0 && errors.length > 0) {
-                throw new Error('Ningún item pudo ser procesado: ' + errors.map(e => e.error).join('; '));
-            }
         });
         res.status(201).json({
-            message: `Carga masiva completada: ${results.length} movimientos creados, ${errors.length} errores`,
+            message: `Carga masiva completada: ${results.length} movimientos creados`,
             processed: results.length,
-            failed: errors.length,
+            failed: 0,
             results,
-            errors,
+            errors: [],
         });
     }
     catch (error) {

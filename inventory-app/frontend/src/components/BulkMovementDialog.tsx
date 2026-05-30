@@ -37,6 +37,7 @@ import { movementsService } from '../services/movements.service';
 import { componentsService } from '../services/components.service';
 import { unitsService } from '../services/units.service';
 import { categoriesService } from '../services/categories.service';
+import { recipesService } from '../services/recipes.service';
 
 const MOVEMENT_TYPES = [
   { value: 'entrada', label: 'Entrada (agregar stock)' },
@@ -78,6 +79,14 @@ interface MissingForm {
   category_id: string;
 }
 
+interface StockError {
+  component_code: string;
+  component_name?: string;
+  available_stock: number;
+  requested_quantity: number;
+  error: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -93,6 +102,8 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
   const [movementType, setMovementType] = useState('entrada');
   const [globalReference, setGlobalReference] = useState('');
   const [globalNotes, setGlobalNotes] = useState('');
+  const [selectedRecipeId, setSelectedRecipeId] = useState('');
+  const [selectedRecipeName, setSelectedRecipeName] = useState('');
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [fileName, setFileName] = useState('');
   const [uploadError, setUploadError] = useState('');
@@ -102,6 +113,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
   const [missingForms, setMissingForms] = useState<Record<string, MissingForm>>({});
   const [isCreatingComponents, setIsCreatingComponents] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [stockErrors, setStockErrors] = useState<StockError[] | null>(null);
 
   const { data: unitsData } = useQuery({
     queryKey: ['units'],
@@ -113,6 +125,12 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
     queryFn: categoriesService.getCategories,
   });
 
+  const { data: recipesData } = useQuery({
+    queryKey: ['recipes'],
+    queryFn: () => recipesService.getRecipes({ is_active: true }),
+    enabled: open,
+  });
+
   const bulkMutation = useMutation({
     mutationFn: movementsService.createBulkMovements,
     onSuccess: (data) => {
@@ -120,9 +138,18 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['movements'] });
       queryClient.invalidateQueries({ queryKey: ['components'] });
       queryClient.invalidateQueries({ queryKey: ['components-list'] });
+      if (selectedRecipeId) {
+        queryClient.invalidateQueries({ queryKey: ['recipe-movements', selectedRecipeId] });
+      }
     },
     onError: (error: any) => {
-      setUploadError(error.response?.data?.error || error.message);
+      const errData = error.response?.data;
+      const errors: StockError[] = errData?.errors;
+      if (errors?.length > 0) {
+        setStockErrors(errors);
+      } else {
+        setUploadError(errData?.error || error.message);
+      }
     },
   });
 
@@ -131,6 +158,8 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
     setMovementType('entrada');
     setGlobalReference('');
     setGlobalNotes('');
+    setSelectedRecipeId('');
+    setSelectedRecipeName('');
     setParsedRows([]);
     setFileName('');
     setUploadError('');
@@ -140,6 +169,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
     setMissingForms({});
     setIsCreatingComponents(false);
     setCreateError('');
+    setStockErrors(null);
     onClose();
   };
 
@@ -382,6 +412,8 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
       type: movementType,
       reference_number: globalReference || undefined,
       notes: globalNotes || undefined,
+      recipe_id: selectedRecipeId || undefined,
+      recipe_name: selectedRecipeName || undefined,
       items: validRows.map(r => ({
         component_code: r.codigo,
         quantity: r.cantidad,
@@ -403,8 +435,51 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Carga Masiva de Movimientos</DialogTitle>
+      <DialogTitle>
+        {stockErrors ? 'Componentes sin stock suficiente' : 'Carga Masiva de Movimientos'}
+      </DialogTitle>
       <DialogContent>
+
+        {/* VISTA DE STOCK INSUFICIENTE */}
+        {stockErrors && (
+          <Box>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              No se creó ningún movimiento. Los siguientes componentes no tienen stock suficiente:
+            </Alert>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Componente</TableCell>
+                    <TableCell>Código</TableCell>
+                    <TableCell align="right">Disponible</TableCell>
+                    <TableCell align="right">Solicitado</TableCell>
+                    <TableCell align="right">Faltante</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {stockErrors.map((e, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{e.component_name || '-'}</TableCell>
+                      <TableCell><code>{e.component_code}</code></TableCell>
+                      <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                        {e.available_stock ?? 0}
+                      </TableCell>
+                      <TableCell align="right">{e.requested_quantity ?? '-'}</TableCell>
+                      <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                        {e.available_stock != null && e.requested_quantity != null
+                          ? `-${e.requested_quantity - e.available_stock}`
+                          : '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
+        {!stockErrors && <>
         <Stepper activeStep={result ? 4 : step} sx={{ mb: 3, mt: 1 }}>
           {STEPS.map(label => (
             <Step key={label}><StepLabel>{label}</StepLabel></Step>
@@ -441,6 +516,25 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
                   onChange={(e) => setGlobalReference(e.target.value)}
                   helperText="Se aplica a todos los movimientos si no tienen referencia propia"
                 />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Vincular a receta (opcional)"
+                  value={selectedRecipeId}
+                  onChange={(e) => {
+                    const recipe = recipesData?.recipes?.find((r: any) => r.id === e.target.value);
+                    setSelectedRecipeId(e.target.value);
+                    setSelectedRecipeName(recipe?.name || '');
+                  }}
+                  helperText="Los movimientos quedarán vinculados al historial de esta receta"
+                >
+                  <MenuItem value="">Sin receta</MenuItem>
+                  {(recipesData?.recipes || []).map((r: any) => (
+                    <MenuItem key={r.id} value={r.id}>{r.code} — {r.name}</MenuItem>
+                  ))}
+                </TextField>
               </Grid>
               <Grid item xs={12}>
                 <TextField
@@ -797,7 +891,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
                 </Typography>
                 {result.errors.map((e: any, i: number) => (
                   <Typography key={i} variant="body2" color="error">
-                    • {e.component_code}: {e.error}
+                    • {e.component_name ? `${e.component_name} (${e.component_code})` : e.component_code}: {e.error}
                   </Typography>
                 ))}
               </Box>
@@ -833,13 +927,15 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
             )}
           </Box>
         )}
+        </>}
       </DialogContent>
 
       <DialogActions>
         <Button onClick={handleClose}>
-          {result ? 'Cerrar' : 'Cancelar'}
+          {result || stockErrors ? 'Cerrar' : 'Cancelar'}
         </Button>
 
+        {!stockErrors && <>
         {/* Paso 0 */}
         {step === 0 && (
           <>
@@ -935,6 +1031,7 @@ export default function BulkMovementDialog({ open, onClose }: Props) {
             </Button>
           </>
         )}
+        </>}
       </DialogActions>
     </Dialog>
   );

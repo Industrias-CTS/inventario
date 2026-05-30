@@ -96,11 +96,12 @@ export const getRecipeById = async (req: Request, res: Response) => {
     }
 
     const ingredientsQuery = `
-      SELECT 
+      SELECT
         ri.*,
         c.code as component_code,
         c.name as component_name,
         c.cost_price,
+        c.current_stock,
         u.name as unit_name,
         u.symbol as unit_symbol
       FROM recipe_ingredients ri
@@ -111,17 +112,21 @@ export const getRecipeById = async (req: Request, res: Response) => {
     `;
 
     const ingredients = await db.query(ingredientsQuery, [id]);
-    
-    // Calcular costo de cada ingrediente y el costo total
+
+    // Calcular costo de cada ingrediente, costo total y unidades posibles
     let totalCost = 0;
+    let availableUnits = Infinity;
     for (const ingredient of ingredients) {
       ingredient.ingredient_cost = ingredient.quantity * (ingredient.cost_price || 0);
       totalCost += ingredient.ingredient_cost;
+      const possible = ingredient.quantity > 0 ? Math.floor((ingredient.current_stock || 0) / ingredient.quantity) : Infinity;
+      if (possible < availableUnits) availableUnits = possible;
     }
-    
+
     recipe.ingredients = ingredients;
     recipe.total_cost = totalCost;
     recipe.unit_cost = recipe.output_quantity > 0 ? totalCost / recipe.output_quantity : 0;
+    recipe.available_units = availableUnits === Infinity ? 0 : availableUnits;
     
     res.json({ recipe });
   } catch (error) {

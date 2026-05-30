@@ -98,6 +98,7 @@ export default function Movements() {
   const [recipeMultiplier, setRecipeMultiplier] = useState(1);
   const [movementItems, setMovementItems] = useState<Array<{
     component_id: string;
+    component_code?: string;
     component_name: string;
     quantity: number;
     unit: string;
@@ -109,6 +110,9 @@ export default function Movements() {
   const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const [expandedRecipes, setExpandedRecipes] = useState<Set<string>>(new Set());
+  const [stockErrorsList, setStockErrorsList] = useState<any[]>([]);
+  const [openStockErrorDialog, setOpenStockErrorDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: movementsData, isLoading: movementsLoading } = useQuery({
@@ -286,29 +290,31 @@ export default function Movements() {
 
   const onSubmitMovement = (data: any) => {
     if (useRecipe && movementItems.length > 0) {
-      const validItems = movementItems.filter(item => item.component_id && item.quantity > 0);
-      if (validItems.length === 0) {
-        alert('No hay componentes válidos en la receta seleccionada');
+      // Verificar que todos los componentes tienen código válido
+      const missingCode = movementItems.filter(item => !(item.component_code || item.component_id));
+      if (missingCode.length > 0) {
+        alert(`${missingCode.length} componente(s) de la receta no tienen código válido. Verifique la receta.`);
         return;
       }
 
-      const batchRecipeId = selectedRecipe?.id || null;
-      const batchRecipeName = selectedRecipe?.name || null;
+      const allItems = movementItems.filter(item => item.quantity > 0);
+      if (allItems.length === 0) {
+        alert('No hay componentes con cantidad válida en la receta seleccionada');
+        return;
+      }
 
-      Promise.all(
-        validItems.map(item =>
-          movementsService.createMovement({
-            type: data.type,
-            component_id: item.component_id,
-            quantity: parseFloat(item.quantity.toString()),
-            unit_cost: item.cost_price ? parseFloat(item.cost_price.toString()) : 0,
-            reference_number: data.reference_number,
-            notes: `${data.notes || ''} - Receta: ${batchRecipeName} (x${recipeMultiplier})`.trim(),
-            recipe_id: batchRecipeId,
-            recipe_name: batchRecipeName,
-          })
-        )
-      ).then(() => {
+      movementsService.createBulkMovements({
+        type: data.type,
+        reference_number: data.reference_number || undefined,
+        notes: `${data.notes || ''} - Receta: ${selectedRecipe?.name} (x${recipeMultiplier})`.trim(),
+        recipe_id: selectedRecipe?.id || undefined,
+        recipe_name: selectedRecipe?.name || undefined,
+        items: allItems.map(item => ({
+          component_code: item.component_code || item.component_id,
+          quantity: parseFloat(item.quantity.toString()),
+          unit_cost: item.cost_price ? parseFloat(item.cost_price.toString()) : 0,
+        })),
+      }).then((result) => {
         queryClient.invalidateQueries({ queryKey: ['movements'] });
         queryClient.invalidateQueries({ queryKey: ['components'] });
         queryClient.invalidateQueries({ queryKey: ['components-list'] });
@@ -318,10 +324,25 @@ export default function Movements() {
         setSelectedRecipe(null);
         setUseRecipe(false);
         setRecipeMultiplier(1);
-        alert('Movimientos creados exitosamente desde la receta');
+        setSuccessMessage(`${result.processed} movimiento(s) creados correctamente`);
+        setTimeout(() => setSuccessMessage(null), 4000);
       }).catch((error) => {
-        console.error('Error al crear movimientos:', error);
-        alert(`Error al crear movimientos: ${error.response?.data?.error || error.message}`);
+        const errData = error.response?.data;
+        const errors: any[] = Array.isArray(errData?.errors) ? errData.errors : [];
+        setOpenMovementDialog(false);
+        if (errors.length > 0) {
+          setStockErrorsList(errors);
+        } else {
+          // Fallback: construir una entrada genérica desde el mensaje de error
+          setStockErrorsList([{
+            component_name: errData?.error || error.message || 'Error desconocido',
+            component_code: null,
+            available_stock: null,
+            requested_quantity: null,
+            error: errData?.error || error.message,
+          }]);
+        }
+        setOpenStockErrorDialog(true);
       });
     } else {
       createMovementMutation.mutate({
@@ -375,6 +396,11 @@ export default function Movements() {
 
   return (
     <Box>
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
+        </Alert>
+      )}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Movimientos de Inventario</Typography>
         {!isViewer && (
@@ -436,15 +462,20 @@ export default function Movements() {
           />
         </TabPanel>
 
-        {/* Tab 1: Movimientos agrupados por receta */}
+        {/* Tab 1: Movimientos agrupados por ejecución de receta */}
         {!isViewer && (
           <TabPanel value={tabValue} index={1}>
             {(() => {
               const recipeMovements = (movementsData?.movements || []).filter((m: any) => m.recipe_id);
               const groups = recipeMovements.reduce((acc: any, m: any) => {
-                const key = m.recipe_id;
+                // Agrupar por receta + referencia (o por minuto si no hay referencia)
+                const batchKey = m.reference_number
+                  ? `ref:${m.reference_number}`
+                  : `ts:${m.created_at ? m.created_at.substring(0, 16) : ''}`;
+                const key = `${m.recipe_id}||${batchKey}`;
                 if (!acc[key]) {
                   acc[key] = {
+                    key,
                     recipe_id: m.recipe_id,
                     recipe_name: m.recipe_name || 'Receta',
                     reference: m.reference_number,
@@ -452,7 +483,7 @@ export default function Movements() {
                     movements: [],
                   };
                 }
-                if (m.created_at < acc[key].date) acc[key].date = m.created_at;
+                if (m.created_at > acc[key].date) acc[key].date = m.created_at;
                 acc[key].movements.push(m);
                 return acc;
               }, {} as Record<string, any>);
@@ -474,40 +505,52 @@ export default function Movements() {
                       <TableRow>
                         <TableCell width={40} />
                         <TableCell>Receta</TableCell>
-                        <TableCell>Referencia</TableCell>
+                        <TableCell>Orden / Referencia</TableCell>
                         <TableCell>Fecha</TableCell>
+                        <TableCell>Tipo</TableCell>
                         <TableCell align="right">Componentes</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {groupList
                         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                        .map((group: any) => (
-                          <React.Fragment key={group.recipe_id}>
+                        .map((group: any) => {
+                          const groupType = group.movements[0]?.type || 'salida';
+                          const isEntry = groupType === 'entrada';
+                          return (
+                          <React.Fragment key={group.key}>
                             <TableRow
                               hover
                               sx={{ cursor: 'pointer', backgroundColor: 'action.hover' }}
                               onClick={() =>
                                 setExpandedRecipes(prev => {
                                   const next = new Set(prev);
-                                  next.has(group.recipe_id) ? next.delete(group.recipe_id) : next.add(group.recipe_id);
+                                  next.has(group.key) ? next.delete(group.key) : next.add(group.key);
                                   return next;
                                 })
                               }
                             >
                               <TableCell>
-                                {expandedRecipes.has(group.recipe_id) ? <ExpandLess /> : <ExpandMore />}
+                                {expandedRecipes.has(group.key) ? <ExpandLess /> : <ExpandMore />}
                               </TableCell>
                               <TableCell><strong>{group.recipe_name}</strong></TableCell>
                               <TableCell>{group.reference || '-'}</TableCell>
                               <TableCell>{format(new Date(group.date), 'dd/MM/yyyy HH:mm')}</TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={isEntry ? 'Entrada' : 'Salida'}
+                                  size="small"
+                                  color={isEntry ? 'success' : 'error'}
+                                  icon={isEntry ? <ArrowDownward sx={{ fontSize: '14px !important' }} /> : <ArrowUpward sx={{ fontSize: '14px !important' }} />}
+                                />
+                              </TableCell>
                               <TableCell align="right">
                                 <Chip label={group.movements.length} size="small" />
                               </TableCell>
                             </TableRow>
                             <TableRow>
-                              <TableCell colSpan={5} sx={{ p: 0, border: 0 }}>
-                                <Collapse in={expandedRecipes.has(group.recipe_id)} timeout="auto" unmountOnExit>
+                              <TableCell colSpan={6} sx={{ p: 0, border: 0 }}>
+                                <Collapse in={expandedRecipes.has(group.key)} timeout="auto" unmountOnExit>
                                   <Box sx={{ m: 1, pl: 4 }}>
                                     <Table size="small">
                                       <TableHead>
@@ -516,7 +559,7 @@ export default function Movements() {
                                           <TableCell>Tipo</TableCell>
                                           <TableCell align="right">Cantidad</TableCell>
                                           <TableCell align="right">Costo Unit.</TableCell>
-                                          <TableCell>Fecha</TableCell>
+                                          <TableCell>Hora</TableCell>
                                         </TableRow>
                                       </TableHead>
                                       <TableBody>
@@ -525,14 +568,14 @@ export default function Movements() {
                                             <TableCell>{m.component_name}</TableCell>
                                             <TableCell>
                                               <Chip
-                                                label={m.type}
+                                                label={m.type === 'entrada' ? 'Entrada' : 'Salida'}
                                                 size="small"
                                                 color={m.type === 'entrada' ? 'success' : 'error'}
                                               />
                                             </TableCell>
                                             <TableCell align="right">{m.quantity}</TableCell>
                                             <TableCell align="right">${m.unit_cost || 0}</TableCell>
-                                            <TableCell>{format(new Date(m.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
+                                            <TableCell>{format(new Date(m.created_at), 'HH:mm:ss')}</TableCell>
                                           </TableRow>
                                         ))}
                                       </TableBody>
@@ -542,7 +585,8 @@ export default function Movements() {
                               </TableCell>
                             </TableRow>
                           </React.Fragment>
-                        ))}
+                          );
+                        })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -597,6 +641,7 @@ export default function Movements() {
                             if (recipeDetails.recipe.ingredients && recipeDetails.recipe.ingredients.length > 0) {
                               const items = recipeDetails.recipe.ingredients.map((ingredient: any) => ({
                                 component_id: ingredient.component_id,
+                                component_code: ingredient.component_code,
                                 component_name: ingredient.component_name || ingredient.component?.name,
                                 quantity: ingredient.quantity * recipeMultiplier,
                                 unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit',
@@ -634,6 +679,7 @@ export default function Movements() {
                             if (recipeDetails.recipe.ingredients) {
                               const items = recipeDetails.recipe.ingredients.map((ingredient: any) => ({
                                 component_id: ingredient.component_id,
+                                component_code: ingredient.component_code,
                                 component_name: ingredient.component_name || ingredient.component?.name,
                                 quantity: ingredient.quantity * value,
                                 unit: ingredient.unit_symbol || ingredient.component?.unit_symbol || 'unit',
@@ -1263,6 +1309,77 @@ export default function Movements() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDetailsDialog(false)}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de componentes sin stock suficiente */}
+      <Dialog
+        open={openStockErrorDialog}
+        onClose={() => { setOpenStockErrorDialog(false); setStockErrorsList([]); }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: 'error.main', fontWeight: 'bold' }}>
+          Movimiento cancelado — stock insuficiente
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <strong>No se creó ningún movimiento.</strong> Para que el movimiento se procese,
+            todos los componentes deben tener stock suficiente. Corrija el inventario
+            o ajuste la receta antes de reintentar.
+          </Alert>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ backgroundColor: 'grey.100' }}>
+                  <TableCell sx={{ fontWeight: 'bold' }}>Código</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>Descripción</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>Disponible</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>Solicitado</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold', color: 'error.main' }}>Faltante</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {stockErrorsList.map((e: any, i: number) => (
+                  <TableRow
+                    key={i}
+                    sx={{ '&:nth-of-type(odd)': { backgroundColor: 'grey.50' } }}
+                  >
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="bold" fontFamily="monospace">
+                        {e.component_code || '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {e.component_name || e.error || '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: 'warning.dark', fontWeight: 'bold' }}>
+                      {e.available_stock ?? '—'}
+                    </TableCell>
+                    <TableCell align="right">
+                      {e.requested_quantity ?? '—'}
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                      {e.available_stock != null && e.requested_quantity != null
+                        ? `${e.requested_quantity - e.available_stock}`
+                        : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => { setOpenStockErrorDialog(false); setStockErrorsList([]); }}
+          >
+            Cerrar
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

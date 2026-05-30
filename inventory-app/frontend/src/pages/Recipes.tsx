@@ -521,6 +521,12 @@ export default function Recipes() {
                           <strong>Producto Final:</strong> {(selectedRecipe as any).output_component_name}
                           {' '}({selectedRecipe.output_quantity} {(selectedRecipe as any).output_unit_symbol})
                         </Typography>
+                        <Typography sx={{ mt: 1 }}>
+                          <strong>Unidades posibles:</strong>{' '}
+                          <span style={{ color: (selectedRecipe as any).available_units > 0 ? 'green' : 'red', fontWeight: 'bold' }}>
+                            {(selectedRecipe as any).available_units ?? 0}
+                          </span>
+                        </Typography>
                       </CardContent>
                     </Card>
                   </Grid>
@@ -533,24 +539,31 @@ export default function Recipes() {
                             <TableHead>
                               <TableRow>
                                 <TableCell>Componente</TableCell>
-                                <TableCell align="right">Cantidad</TableCell>
+                                <TableCell align="right">Cant. requerida</TableCell>
+                                <TableCell align="right">Stock actual</TableCell>
                                 <TableCell>Unidad</TableCell>
                                 <TableCell align="right">Costo Unit.</TableCell>
                                 <TableCell align="right">Costo Total</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {(selectedRecipe as any).ingredients?.map((ingredient: any) => (
+                              {(selectedRecipe as any).ingredients?.map((ingredient: any) => {
+                                const stockOk = (ingredient.current_stock || 0) >= ingredient.quantity;
+                                return (
                                 <TableRow key={ingredient.id}>
                                   <TableCell>{ingredient.component_name}</TableCell>
                                   <TableCell align="right">{ingredient.quantity}</TableCell>
+                                  <TableCell align="right" sx={{ color: stockOk ? 'success.main' : 'error.main', fontWeight: 'bold' }}>
+                                    {ingredient.current_stock ?? 0}
+                                  </TableCell>
                                   <TableCell>{ingredient.unit_symbol}</TableCell>
                                   <TableCell align="right">${ingredient.cost_price?.toFixed(2) || '0.00'}</TableCell>
                                   <TableCell align="right">${ingredient.ingredient_cost?.toFixed(2) || '0.00'}</TableCell>
                                 </TableRow>
-                              ))}
+                                );
+                              })}
                               <TableRow>
-                                <TableCell colSpan={4} align="right">
+                                <TableCell colSpan={5} align="right">
                                   <Typography variant="subtitle1" fontWeight="bold">Costo Total:</Typography>
                                 </TableCell>
                                 <TableCell align="right">

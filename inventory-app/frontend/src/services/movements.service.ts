@@ -61,6 +61,8 @@ export const movementsService = {
     type: string;
     reference_number?: string;
     notes?: string;
+    recipe_id?: string;
+    recipe_name?: string;
     items: Array<{
       component_code: string;
       quantity: number;
